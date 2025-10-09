@@ -451,8 +451,8 @@ func (c *Client) recv(keepaliveQuit chan<- struct{}) {
 		case stanza.StreamClosePacket:
 			// TCP messages should arrive in order, so we can expect to get nothing more after this occurs
 			c.transport.ReceivedStreamClose()
-			c.disconnected(c.Session.SMState)
-			return
+			c.Disconnect()
+			continue
 		case stanza.Message, stanza.Presence, *stanza.IQ:
 			c.Session.SMState.Inbound++
 		}
