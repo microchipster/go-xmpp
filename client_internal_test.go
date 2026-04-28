@@ -204,7 +204,7 @@ func Test_StreamManagementResume(t *testing.T) {
 		Credential:             Password("test"),
 		Insecure:               true,
 		StreamManagementEnable: true,
-		streamManagementResume: true} // Enable stream management
+		StreamManagementResume: true} // Enable stream management
 
 	var client *Client
 	router := NewRouter()
@@ -315,7 +315,7 @@ func Test_StreamManagementFail(t *testing.T) {
 		Credential:             Password("test"),
 		Insecure:               true,
 		StreamManagementEnable: true,
-		streamManagementResume: true} // Enable stream management
+		StreamManagementResume: true} // Enable stream management
 
 	var client *Client
 	router := NewRouter()
@@ -384,7 +384,7 @@ func Test_SendStanzaQueueWithSM(t *testing.T) {
 		Credential:             Password("test"),
 		Insecure:               true,
 		StreamManagementEnable: true,
-		streamManagementResume: true} // Enable stream management
+		StreamManagementResume: true} // Enable stream management
 
 	var client *Client
 	router := NewRouter()
@@ -583,7 +583,7 @@ func initSrvCliForResumeTests(t *testing.T, serverHandler func(*testing.T, *Serv
 		Credential:             Password("test"),
 		Insecure:               true,
 		StreamManagementEnable: StreamManagementEnable,
-		streamManagementResume: StreamManagementResume}
+		StreamManagementResume: StreamManagementResume}
 
 	var client *Client
 	var err error

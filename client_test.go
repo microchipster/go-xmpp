@@ -477,7 +477,7 @@ func Test_ClientPostReconnectHook(t *testing.T) {
 		Credential:             Password("test"),
 		Insecure:               true,
 		StreamManagementEnable: true,
-		streamManagementResume: true} // Enable stream management
+		StreamManagementResume: true} // Enable stream management
 
 	var client *Client
 	router := NewRouter()
