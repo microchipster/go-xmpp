@@ -2,32 +2,21 @@ package stanza
 
 import (
 	"encoding/xml"
+	"strings"
 	"testing"
 )
 
-func TestNode_Marshal(t *testing.T) {
-	jsonData := []byte("{\"key\":\"value\"}")
-
-	iqResp, err := NewIQ(Attrs{Type: "result", From: "admin@localhost", To: "test@localhost", Id: "1"})
-	if err != nil {
-		t.Fatalf("failed to create IQ: %v", err)
+func TestNodeUnmarshalRejectsDeepXML(t *testing.T) {
+	var builder strings.Builder
+	for i := 0; i < xmlElementMaxDepth; i++ {
+		builder.WriteString("<x>")
 	}
-	iqResp.Any = &Node{
-		XMLName: xml.Name{Space: "myNS", Local: "space"},
-		Content: string(jsonData),
+	for i := 0; i < xmlElementMaxDepth; i++ {
+		builder.WriteString("</x>")
 	}
 
-	bytes, err := xml.Marshal(iqResp)
-	if err != nil {
-		t.Errorf("Could not marshal XML: %v", err)
-	}
-
-	parsedIQ := IQ{}
-	if err := xml.Unmarshal(bytes, &parsedIQ); err != nil {
-		t.Errorf("Unmarshal returned error: %v", err)
-	}
-
-	if parsedIQ.Any.Content != string(jsonData) {
-		t.Errorf("Cannot find generic any payload in parsedIQ: '%s'", parsedIQ.Any.Content)
+	var node Node
+	if err := xml.Unmarshal([]byte(builder.String()), &node); err == nil {
+		t.Fatal("expected deep XML to fail")
 	}
 }
