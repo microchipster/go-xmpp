@@ -23,7 +23,7 @@ const (
 type Command struct {
 	XMLName xml.Name `xml:"http://jabber.org/protocol/commands command"`
 
-	CommandElements []CommandElement
+	CommandElement CommandElement
 
 	BadAction       *struct{} `xml:"bad-action,omitempty"`
 	BadLocale       *struct{} `xml:"bad-locale,omitempty"`
@@ -56,8 +56,6 @@ type CommandElement interface {
 }
 
 type Actions struct {
-	XMLName xml.Name `xml:"actions"`
-
 	Prev     *struct{} `xml:"prev,omitempty"`
 	Next     *struct{} `xml:"next,omitempty"`
 	Complete *struct{} `xml:"complete,omitempty"`
@@ -70,8 +68,6 @@ func (a *Actions) Ref() string {
 }
 
 type Note struct {
-	XMLName xml.Name `xml:"note"`
-
 	Text string `xml:",cdata"`
 	Type string `xml:"type,attr,omitempty"`
 }
@@ -121,22 +117,22 @@ func (c *Command) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			var err error
 			switch tt.Name.Local {
 
-			case "actions":
+			case "affiliations":
 				a := Actions{}
 				err = d.DecodeElement(&a, &tt)
-				c.CommandElements = append(c.CommandElements, &a)
-			case "note":
+				c.CommandElement = &a
+			case "configure":
 				nt := Note{}
 				err = d.DecodeElement(&nt, &tt)
-				c.CommandElements = append(c.CommandElements, &nt)
+				c.CommandElement = &nt
 			case "x":
 				f := Form{}
 				err = d.DecodeElement(&f, &tt)
-				c.CommandElements = append(c.CommandElements, &f)
+				c.CommandElement = &f
 			default:
 				n := Node{}
 				err = d.DecodeElement(&n, &tt)
-				c.CommandElements = append(c.CommandElements, &n)
+				c.CommandElement = &n
 				if err != nil {
 					return err
 				}
