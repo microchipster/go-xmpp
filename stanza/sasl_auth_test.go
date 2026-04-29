@@ -2,6 +2,7 @@ package stanza_test
 
 import (
 	"encoding/xml"
+	"strings"
 	"testing"
 
 	"gosrc.io/xmpp/stanza"
@@ -54,6 +55,17 @@ func TestSessionIQ(t *testing.T) {
 
 	if !session.IsOptional() {
 		t.Error("Session should be optional")
+	}
+}
+
+func TestSASLFailureDecodesReason(t *testing.T) {
+	decoder := xml.NewDecoder(strings.NewReader(`<failure xmlns="urn:ietf:params:xml:ns:xmpp-sasl"><not-authorized/></failure>`))
+	var failure stanza.SASLFailure
+	if err := decoder.Decode(&failure); err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	if failure.Any.Local != "not-authorized" {
+		t.Fatalf("failure reason = %q, want not-authorized", failure.Any.Local)
 	}
 }
 
