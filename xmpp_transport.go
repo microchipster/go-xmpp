@@ -2,7 +2,9 @@ package xmpp
 
 import (
 	"bufio"
+	"crypto"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -107,6 +109,72 @@ func (t *XMPPTransport) StartTLS() error {
 
 	t.isSecure = true
 	return nil
+}
+
+func (t *XMPPTransport) SCRAMChannelBindingData(types []string) (string, []byte, error) {
+	if !t.isSecure || len(types) == 0 {
+		return "", nil, nil
+	}
+	tlsConn, ok := t.conn.(*tls.Conn)
+	if !ok {
+		return "", nil, nil
+	}
+	state := tlsConn.ConnectionState()
+	if containsString(types, "tls-exporter") && state.Version == tls.VersionTLS13 {
+		data, err := state.ExportKeyingMaterial("EXPORTER-Channel-Binding", nil, 32)
+		if err != nil {
+			return "", nil, err
+		}
+		return "tls-exporter", data, nil
+	}
+	if containsString(types, "tls-unique") && state.Version >= tls.VersionTLS10 && state.Version <= tls.VersionTLS12 && len(state.TLSUnique) > 0 {
+		return "tls-unique", state.TLSUnique, nil
+	}
+	if containsString(types, "tls-server-end-point") {
+		data, err := tlsServerEndPointData(state)
+		if err != nil {
+			return "", nil, err
+		}
+		return "tls-server-end-point", data, nil
+	}
+	return "", nil, nil
+}
+
+func tlsServerEndPointData(state tls.ConnectionState) ([]byte, error) {
+	if len(state.PeerCertificates) == 0 {
+		return nil, errors.New("channel binding: missing peer certificate")
+	}
+	hashFunc := tlsServerEndPointHash(state.PeerCertificates[0])
+	if !hashFunc.Available() {
+		return nil, fmt.Errorf("channel binding: hash %v unavailable", hashFunc)
+	}
+	h := hashFunc.New()
+	_, _ = h.Write(state.PeerCertificates[0].Raw)
+	return h.Sum(nil), nil
+}
+
+func tlsServerEndPointHash(cert *x509.Certificate) crypto.Hash {
+	switch cert.SignatureAlgorithm {
+	case x509.MD2WithRSA, x509.MD5WithRSA, x509.SHA1WithRSA, x509.DSAWithSHA1, x509.ECDSAWithSHA1:
+		return crypto.SHA256
+	case x509.SHA256WithRSA, x509.DSAWithSHA256, x509.ECDSAWithSHA256, x509.SHA256WithRSAPSS, x509.PureEd25519:
+		return crypto.SHA256
+	case x509.SHA384WithRSA, x509.ECDSAWithSHA384, x509.SHA384WithRSAPSS:
+		return crypto.SHA384
+	case x509.SHA512WithRSA, x509.ECDSAWithSHA512, x509.SHA512WithRSAPSS:
+		return crypto.SHA512
+	default:
+		return crypto.SHA256
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *XMPPTransport) Ping() error {
