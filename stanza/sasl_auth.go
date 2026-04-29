@@ -32,6 +32,29 @@ type SASLFailure struct {
 	Any     xml.Name // error reason is a subelement
 }
 
+func (sf *SASLFailure) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	sf.XMLName = start.Name
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if sf.Any.Local == "" {
+				sf.Any = t.Name
+			}
+			if err := d.Skip(); err != nil {
+				return err
+			}
+		case xml.EndElement:
+			if t.Name == start.Name {
+				return nil
+			}
+		}
+	}
+}
+
 func (SASLFailure) Name() string {
 	return "sasl:failure"
 }
@@ -47,9 +70,9 @@ func (saslFailureDecoder) decode(p *xml.Decoder, se xml.StartElement) (SASLFailu
 }
 
 type Bind struct {
-	XMLName  xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-bind bind"`
-	Resource string   `xml:"resource,omitempty"`
-	Jid      string   `xml:"jid,omitempty"`
+	XMLName   xml.Name   `xml:"urn:ietf:params:xml:ns:xmpp-bind bind"`
+	Resource  string     `xml:"resource,omitempty"`
+	Jid       string     `xml:"jid,omitempty"`
 	ResultSet *ResultSet `xml:"set,omitempty"`
 }
 
@@ -62,8 +85,8 @@ func (b *Bind) GetSet() *ResultSet {
 }
 
 type StreamSession struct {
-	XMLName  xml.Name  `xml:"urn:ietf:params:xml:ns:xmpp-session session"`
-	Optional *struct{} // If element does exist, it mean we are not required to open session
+	XMLName   xml.Name   `xml:"urn:ietf:params:xml:ns:xmpp-session session"`
+	Optional  *struct{}  // If element does exist, it mean we are not required to open session
 	ResultSet *ResultSet `xml:"set,omitempty"`
 }
 
