@@ -110,6 +110,10 @@ func (t WebsocketTransport) StartTLS() error {
 	return ErrTLSNotSupported
 }
 
+func (t *WebsocketTransport) SCRAMChannelBindingData(types []string) (string, []byte, error) {
+	return "", nil, nil
+}
+
 func (t WebsocketTransport) DoesStartTLS() bool {
 	return false
 }
