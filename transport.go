@@ -29,6 +29,7 @@ type Transport interface {
 	Connect() (string, error)
 	DoesStartTLS() bool
 	StartTLS() error
+	SCRAMChannelBindingData(types []string) (string, []byte, error)
 
 	LogTraffic(logFile io.Writer)
 

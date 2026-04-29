@@ -30,7 +30,7 @@ type Credential struct {
 func Password(pwd string) Credential {
 	credential := Credential{
 		secret:     pwd,
-		mechanisms: []string{"SCRAM-SHA-512", "SCRAM-SHA-256", "SCRAM-SHA-1", "PLAIN"},
+		mechanisms: []string{"SCRAM-SHA-512-PLUS", "SCRAM-SHA-256-PLUS", "SCRAM-SHA-1-PLUS", "SCRAM-SHA-512", "SCRAM-SHA-256", "SCRAM-SHA-1", "PLAIN"},
 	}
 	return credential
 }
@@ -43,24 +43,18 @@ func OAuthToken(token string) Credential {
 	return credential
 }
 
-func authSASL(socket io.ReadWriter, decoder *xml.Decoder, f stanza.StreamFeatures, user string, credential Credential) (err error) {
-	var matchingMech string
-	for _, mech := range credential.mechanisms {
-		if isSupportedMech(mech, f.Mechanisms.Mechanism) {
-			matchingMech = mech
-			break
-		}
+func authSASL(transport Transport, decoder *xml.Decoder, f stanza.StreamFeatures, user string, credential Credential) (err error) {
+	channelBindingName, channelBindingData, err := transport.SCRAMChannelBindingData(f.SASLChannelBinding.Types())
+	if err != nil {
+		return NewConnError(err, true)
 	}
+	matchingMech := selectSASLMechanism(credential.mechanisms, f.Mechanisms.Mechanism, channelBindingName)
 
 	switch matchingMech {
-	case "SCRAM-SHA-512":
-		return authScram(socket, decoder, matchingMech, f.Mechanisms.Mechanism, f.SASLChannelBinding.Types(), user, credential.secret)
-	case "SCRAM-SHA-256":
-		return authScram(socket, decoder, matchingMech, f.Mechanisms.Mechanism, f.SASLChannelBinding.Types(), user, credential.secret)
-	case "SCRAM-SHA-1":
-		return authScram(socket, decoder, matchingMech, f.Mechanisms.Mechanism, f.SASLChannelBinding.Types(), user, credential.secret)
+	case "SCRAM-SHA-512-PLUS", "SCRAM-SHA-256-PLUS", "SCRAM-SHA-1-PLUS", "SCRAM-SHA-512", "SCRAM-SHA-256", "SCRAM-SHA-1":
+		return authScram(transport, decoder, matchingMech, channelBindingName, channelBindingData, f.Mechanisms.Mechanism, f.SASLChannelBinding.Types(), user, credential.secret)
 	case "PLAIN", "X-OAUTH2":
-		return authPlain(socket, decoder, matchingMech, user, credential.secret)
+		return authPlain(transport, decoder, matchingMech, user, credential.secret)
 	default:
 		err := fmt.Errorf("no matching authentication (%v) supported by server: %v", credential.mechanisms, f.Mechanisms.Mechanism)
 		return NewConnError(err, true)
@@ -113,14 +107,14 @@ func authPlain(socket io.ReadWriter, decoder *xml.Decoder, mech string, user str
 	return err
 }
 
-func authScram(socket io.ReadWriter, decoder *xml.Decoder, mech string, advertisedMechanisms []string, advertisedChannelBindings []string, user string, secret string) error {
+func authScram(socket io.ReadWriter, decoder *xml.Decoder, mech string, channelBindingName string, channelBindingData []byte, advertisedMechanisms []string, advertisedChannelBindings []string, user string, secret string) error {
 	clientNonce, err := scramNonce()
 	if err != nil {
 		return err
 	}
 
 	clientFirstBare := fmt.Sprintf("n=%s,r=%s", scramEscape(user), clientNonce)
-	gs2Header := "y,,"
+	gs2Header := scramGS2Header(channelBindingName)
 	clientFirstMessage := gs2Header + clientFirstBare
 
 	if err := sendSASLAuth(socket, mech, clientFirstMessage); err != nil {
@@ -167,7 +161,7 @@ func authScram(socket io.ReadWriter, decoder *xml.Decoder, mech string, advertis
 	}
 
 	var h func() hash.Hash
-	switch mech {
+	switch scramBaseMechanism(mech) {
 	case "SCRAM-SHA-512":
 		h = sha512.New
 	case "SCRAM-SHA-256":
@@ -181,7 +175,7 @@ func authScram(socket io.ReadWriter, decoder *xml.Decoder, mech string, advertis
 		}
 	}
 
-	gs2HeaderB64 := base64.StdEncoding.EncodeToString([]byte(gs2Header))
+	gs2HeaderB64 := base64.StdEncoding.EncodeToString(append([]byte(gs2Header), channelBindingData...))
 	clientFinalWithoutProof := fmt.Sprintf("c=%s,r=%s", gs2HeaderB64, serverNonce)
 	authMessage := clientFirstBare + "," + serverFirst + "," + clientFinalWithoutProof
 
@@ -321,6 +315,29 @@ func scramNonce() (string, error) {
 func scramEscape(value string) string {
 	replacer := strings.NewReplacer("=", "=3D", ",", "=2C")
 	return replacer.Replace(value)
+}
+
+func selectSASLMechanism(preferred []string, advertised []string, channelBindingName string) string {
+	for _, mech := range preferred {
+		if strings.HasSuffix(mech, "-PLUS") && channelBindingName == "" {
+			continue
+		}
+		if isSupportedMech(mech, advertised) {
+			return mech
+		}
+	}
+	return ""
+}
+
+func scramBaseMechanism(mech string) string {
+	return strings.TrimSuffix(mech, "-PLUS")
+}
+
+func scramGS2Header(channelBindingName string) string {
+	if channelBindingName != "" {
+		return fmt.Sprintf("p=%s,,", channelBindingName)
+	}
+	return "y,,"
 }
 
 func parseSCRAMFields(message string) (map[string]string, error) {
