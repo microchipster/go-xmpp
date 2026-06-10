@@ -1,0 +1,6 @@
+PR #180: Fix passing Component to StreamManager
+Fork repo: https://github.com/bodqhrohro/go-xmpp
+Head ref: 160-regression
+Head sha: e55463fc9829bbed582baaa8741fc59bc2a9913f
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

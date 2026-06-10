@@ -1,0 +1,6 @@
+PR #190: Reconnect fixes
+Fork repo: https://github.com/mwild1/go-xmpp
+Head ref: reconnect-fixes
+Head sha: be6f23da782b8ab8daa51ccc095b41498b8ad545
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

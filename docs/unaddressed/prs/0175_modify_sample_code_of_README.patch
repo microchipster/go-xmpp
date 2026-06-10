@@ -1,0 +1,22 @@
+From 9f06690c49d09169e65d46e99bec5599830d6f94 Mon Sep 17 00:00:00 2001
+From: kizitorashiro <kizitora.shiro@gmail.com>
+Date: Sun, 14 Feb 2021 17:52:18 +0900
+Subject: [PATCH] modify sample code of README
+
+---
+ README.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/README.md b/README.md
+index 3487b01..8c91c28 100644
+--- a/README.md
++++ b/README.md
+@@ -124,7 +124,7 @@ func main() {
+ 	router := xmpp.NewRouter()
+ 	router.HandleFunc("message", handleMessage)
+ 
+-	client, err := xmpp.NewClient(config, router, errorHandler)
++	client, err := xmpp.NewClient(&config, router, errorHandler)
+ 	if err != nil {
+ 		log.Fatalf("%+v", err)
+ 	}

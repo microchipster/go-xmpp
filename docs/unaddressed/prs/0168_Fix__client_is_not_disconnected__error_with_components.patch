@@ -1,0 +1,456 @@
+From ddb8c5a1eb5c2093815fee70998a44752f692c51 Mon Sep 17 00:00:00 2001
+From: Dave Johnston <davejohnston@improbable.io>
+Date: Fri, 4 Sep 2020 10:54:47 +0100
+Subject: [PATCH 1/8] Fix `connect()` to work with external component
+
+---
+ stream_manager.go | 33 +++++++++++++++++++--------------
+ 1 file changed, 19 insertions(+), 14 deletions(-)
+
+diff --git a/stream_manager.go b/stream_manager.go
+index 7bfb42c..c09f183 100644
+--- a/stream_manager.go
++++ b/stream_manager.go
+@@ -113,22 +113,27 @@ func (sm *StreamManager) Stop() {
+ }
+ 
+ func (sm *StreamManager) connect() error {
+-	if sm.client != nil {
+-		if c, ok := sm.client.(*Client); ok {
+-			if c.CurrentState.getState() == StateDisconnected {
+-				sm.Metrics = initMetrics()
+-				err := c.Connect()
+-				if err != nil {
+-					return err
+-				}
+-				if sm.PostConnect != nil {
+-					sm.PostConnect(sm.client)
+-				}
+-				return nil
+-			}
++	if sm.client == nil {
++		return errors.New("client is not set")
++	}
++	
++	if c, ok := sm.client.(*Client); ok {
++		if c.CurrentState.getState() != StateDisconnected {
++			return errors.New("client is not disconnected")
+ 		}
+ 	}
+-	return errors.New("client is not disconnected")
++
++	sm.Metrics = initMetrics()
++	
++	if err := sm.client.Connect(); err != nil {
++		return err
++	}
++	
++	if sm.PostConnect != nil {
++		sm.PostConnect(sm.client)
++	}
++	
++	return nil
+ }
+ 
+ // resume manages the reconnection loop and apply the define backoff to avoid overloading the server.
+
+From 6fba0f00dbf117145cb43641afece5b0bcc534a9 Mon Sep 17 00:00:00 2001
+From: Dave Johnston <davejohnston@improbable.io>
+Date: Fri, 4 Dec 2020 10:07:13 +0000
+Subject: [PATCH 2/8] fix: wrap errors
+
+---
+ cert_checker.go    |  4 ++--
+ stanza/parser.go   |  4 ++--
+ tcp_server_mock.go | 28 ++++++++++++++--------------
+ 3 files changed, 18 insertions(+), 18 deletions(-)
+
+diff --git a/cert_checker.go b/cert_checker.go
+index 30a265a..629720f 100644
+--- a/cert_checker.go
++++ b/cert_checker.go
+@@ -65,7 +65,7 @@ func (c *ServerCheck) Check() error {
+ 	var f stanza.StreamFeatures
+ 	packet, err := stanza.NextPacket(decoder)
+ 	if err != nil {
+-		err = fmt.Errorf("stream open decode features: %s", err)
++		err = fmt.Errorf("stream open decode features: %w", err)
+ 		return err
+ 	}
+ 
+@@ -86,7 +86,7 @@ func (c *ServerCheck) Check() error {
+ 
+ 		var k stanza.TLSProceed
+ 		if err = decoder.DecodeElement(&k, nil); err != nil {
+-			return fmt.Errorf("expecting starttls proceed: %s", err)
++			return fmt.Errorf("expecting starttls proceed: %w", err)
+ 		}
+ 
+ 		var tlsConfig tls.Config
+diff --git a/stanza/parser.go b/stanza/parser.go
+index b5f11cf..9017c97 100644
+--- a/stanza/parser.go
++++ b/stanza/parser.go
+@@ -91,7 +91,7 @@ func NextXmppToken(p *xml.Decoder) (xml.Token, error) {
+ 			return xml.StartElement{}, errors.New("connection closed")
+ 		}
+ 		if err != nil {
+-			return xml.StartElement{}, fmt.Errorf("NextStart %s", err)
++			return xml.StartElement{}, fmt.Errorf("NextStart: %w", err)
+ 		}
+ 		switch t := t.(type) {
+ 		case xml.StartElement:
+@@ -112,7 +112,7 @@ func NextStart(p *xml.Decoder) (xml.StartElement, error) {
+ 			return xml.StartElement{}, errors.New("connection closed")
+ 		}
+ 		if err != nil {
+-			return xml.StartElement{}, fmt.Errorf("NextStart %s", err)
++			return xml.StartElement{}, fmt.Errorf("NextStart: %w", err)
+ 		}
+ 		switch t := t.(type) {
+ 		case xml.StartElement:
+diff --git a/tcp_server_mock.go b/tcp_server_mock.go
+index d189e3a..b74df04 100644
+--- a/tcp_server_mock.go
++++ b/tcp_server_mock.go
+@@ -131,7 +131,7 @@ func respondToIQ(t *testing.T, sc *ServerConn) {
+ 	// Decoder to parse the request
+ 	iqReq, err := receiveIq(sc)
+ 	if err != nil {
+-		t.Fatalf("failed to receive IQ : %s", err.Error())
++		t.Fatalf("failed to receive IQ : %w", err.Error())
+ 	}
+ 
+ 	if vld, _ := iqReq.IsValid(); !vld {
+@@ -155,7 +155,7 @@ func respondToIQ(t *testing.T, sc *ServerConn) {
+ 	mResp, err := xml.Marshal(iqResp)
+ 	_, err = fmt.Fprintln(sc.connection, string(mResp))
+ 	if err != nil {
+-		t.Errorf("Could not send response stanza : %s", err)
++		t.Errorf("Could not send response stanza : %w", err)
+ 	}
+ 	return
+ }
+@@ -175,15 +175,15 @@ func discardPresence(t *testing.T, sc *ServerConn) {
+ 
+ 	if err != nil {
+ 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+-			t.Errorf("read timeout: %s", err)
++			t.Errorf("read timeout: %w", err)
+ 		} else {
+-			t.Errorf("read error: %s", err)
++			t.Errorf("read error: %w", err)
+ 		}
+ 	}
+ 	err = xml.Unmarshal(recvBuf, &presenceStz)
+ 
+ 	if err != nil {
+-		t.Errorf("Expected presence but this happened : %s", err.Error())
++		t.Errorf("Expected presence but this happened : %w", err.Error())
+ 	}
+ }
+ 
+@@ -223,7 +223,7 @@ func sendStreamFeatures(t *testing.T, sc *ServerConn) {
+   </mechanisms>
+ </stream:features>`
+ 	if _, err := fmt.Fprintln(sc.connection, features); err != nil {
+-		t.Errorf("cannot send stream feature: %s", err)
++		t.Errorf("cannot send stream feature: %w", err)
+ 	}
+ }
+ 
+@@ -231,7 +231,7 @@ func sendStreamFeatures(t *testing.T, sc *ServerConn) {
+ func readAuth(t *testing.T, decoder *xml.Decoder) string {
+ 	se, err := stanza.NextStart(decoder)
+ 	if err != nil {
+-		t.Errorf("cannot read auth: %s", err)
++		t.Errorf("cannot read auth: %w", err)
+ 		return ""
+ 	}
+ 
+@@ -239,7 +239,7 @@ func readAuth(t *testing.T, decoder *xml.Decoder) string {
+ 	nv = &stanza.SASLAuth{}
+ 	// Decode element into pointer storage
+ 	if err = decoder.DecodeElement(nv, &se); err != nil {
+-		t.Errorf("cannot decode auth: %s", err)
++		t.Errorf("cannot decode auth: %w", err)
+ 		return ""
+ 	}
+ 
+@@ -256,7 +256,7 @@ func sendBindFeature(t *testing.T, sc *ServerConn) {
+   <bind xmlns='urn:ietf:params:xml:ns:xmpp-bind'/>
+ </stream:features>`
+ 	if _, err := fmt.Fprintln(sc.connection, features); err != nil {
+-		t.Errorf("cannot send stream feature: %s", err)
++		t.Errorf("cannot send stream feature: %w", err)
+ 	}
+ }
+ 
+@@ -267,21 +267,21 @@ func sendRFC3921Feature(t *testing.T, sc *ServerConn) {
+   <session xmlns='urn:ietf:params:xml:ns:xmpp-session'/>
+ </stream:features>`
+ 	if _, err := fmt.Fprintln(sc.connection, features); err != nil {
+-		t.Errorf("cannot send stream feature: %s", err)
++		t.Errorf("cannot send stream feature: %w", err)
+ 	}
+ }
+ 
+ func bind(t *testing.T, sc *ServerConn) {
+ 	se, err := stanza.NextStart(sc.decoder)
+ 	if err != nil {
+-		t.Errorf("cannot read bind: %s", err)
++		t.Errorf("cannot read bind: %w", err)
+ 		return
+ 	}
+ 
+ 	iq := &stanza.IQ{}
+ 	// Decode element into pointer storage
+ 	if err = sc.decoder.DecodeElement(&iq, &se); err != nil {
+-		t.Errorf("cannot decode bind iq: %s", err)
++		t.Errorf("cannot decode bind iq: %w", err)
+ 		return
+ 	}
+ 
+@@ -300,14 +300,14 @@ func bind(t *testing.T, sc *ServerConn) {
+ func session(t *testing.T, sc *ServerConn) {
+ 	se, err := stanza.NextStart(sc.decoder)
+ 	if err != nil {
+-		t.Errorf("cannot read session: %s", err)
++		t.Errorf("cannot read session: %w", err)
+ 		return
+ 	}
+ 
+ 	iq := &stanza.IQ{}
+ 	// Decode element into pointer storage
+ 	if err = sc.decoder.DecodeElement(&iq, &se); err != nil {
+-		t.Errorf("cannot decode session iq: %s", err)
++		t.Errorf("cannot decode session iq: %w", err)
+ 		return
+ 	}
+ 
+
+From e5679050244bd5930f58b7f5d4606a89f71729bd Mon Sep 17 00:00:00 2001
+From: Dave Johnston <davejohnston@improbable.io>
+Date: Wed, 16 Dec 2020 13:58:11 +0000
+Subject: [PATCH 3/8] fix: use correct code in cleanup
+
+---
+ websocket_transport.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/websocket_transport.go b/websocket_transport.go
+index 7631fc8..19cf95f 100644
+--- a/websocket_transport.go
++++ b/websocket_transport.go
+@@ -168,7 +168,7 @@ func (t *WebsocketTransport) cleanup(code websocket.StatusCode) error {
+ 		t.queue = nil
+ 	}
+ 	if t.wsConn != nil {
+-		err = t.wsConn.Close(websocket.StatusGoingAway, "Done")
++		err = t.wsConn.Close(code, "Done")
+ 		t.wsConn = nil
+ 	}
+ 	if t.closeFunc != nil {
+
+From c1309102bc6197a0da04e10441a73912ca947090 Mon Sep 17 00:00:00 2001
+From: Dave Johnston <davejohnston@improbable.io>
+Date: Wed, 16 Dec 2020 14:00:24 +0000
+Subject: [PATCH 4/8] fix: bad tests
+
+---
+ tcp_server_mock.go | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tcp_server_mock.go b/tcp_server_mock.go
+index b74df04..ea726f9 100644
+--- a/tcp_server_mock.go
++++ b/tcp_server_mock.go
+@@ -131,7 +131,7 @@ func respondToIQ(t *testing.T, sc *ServerConn) {
+ 	// Decoder to parse the request
+ 	iqReq, err := receiveIq(sc)
+ 	if err != nil {
+-		t.Fatalf("failed to receive IQ : %w", err.Error())
++		t.Fatalf("failed to receive IQ : %s", err.Error())
+ 	}
+ 
+ 	if vld, _ := iqReq.IsValid(); !vld {
+@@ -183,7 +183,7 @@ func discardPresence(t *testing.T, sc *ServerConn) {
+ 	err = xml.Unmarshal(recvBuf, &presenceStz)
+ 
+ 	if err != nil {
+-		t.Errorf("Expected presence but this happened : %w", err.Error())
++		t.Errorf("Expected presence but this happened : %w", err)
+ 	}
+ }
+ 
+
+From 1f2f2bb1c5d252d244f8f4d2fa2237987e10f420 Mon Sep 17 00:00:00 2001
+From: Ian Lamb <ianlamb@improbable.io>
+Date: Fri, 15 Jan 2021 12:19:05 -0800
+Subject: [PATCH 5/8] feat!: change msg subject and body to localizable structs
+
+---
+ stanza/message.go | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/stanza/message.go b/stanza/message.go
+index 35e44c1..cb5410b 100644
+--- a/stanza/message.go
++++ b/stanza/message.go
+@@ -8,13 +8,29 @@ import (
+ // ============================================================================
+ // Message Packet
+ 
++// Subject is an element of a message
++type Subject struct {
++	XMLName xml.Name `xml:"subject"`
++
++	Content string `xml:",chardata,omitempty"`
++	Lang    string `xml:"lang,attr,omitempty"`
++}
++
++// Body is an element of a message
++type Body struct {
++	XMLName xml.Name `xml:"body"`
++
++	Content string `xml:",chardata,omitempty"`
++	Lang    string `xml:"lang,attr,omitempty"`
++}
++
+ // Message implements RFC 6120 - A.5 Client Namespace (a part)
+ type Message struct {
+ 	XMLName xml.Name `xml:"message"`
+ 	Attrs
+ 
+-	Subject    string         `xml:"subject,omitempty"`
+-	Body       string         `xml:"body,omitempty"`
++	Subject    []Subject      `xml:"subject,omitempty"`
++	Body       []Body         `xml:"body,omitempty"`
+ 	Thread     string         `xml:"thread,omitempty"`
+ 	Error      Err            `xml:"error,omitempty"`
+ 	Extensions []MsgExtension `xml:",omitempty"`
+
+From da90222053d4e0cd52a5fa756dd300908201b4b1 Mon Sep 17 00:00:00 2001
+From: Derek Brown <derekbrown@improbable.io>
+Date: Fri, 15 Jan 2021 17:14:34 -0500
+Subject: [PATCH 6/8] fix: omitempty is not compatible with chardata xml
+ encoding tag
+
+---
+ stanza/message.go | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/stanza/message.go b/stanza/message.go
+index cb5410b..2a74a14 100644
+--- a/stanza/message.go
++++ b/stanza/message.go
+@@ -12,7 +12,7 @@ import (
+ type Subject struct {
+ 	XMLName xml.Name `xml:"subject"`
+ 
+-	Content string `xml:",chardata,omitempty"`
++	Content string `xml:",chardata"`
+ 	Lang    string `xml:"lang,attr,omitempty"`
+ }
+ 
+@@ -20,7 +20,7 @@ type Subject struct {
+ type Body struct {
+ 	XMLName xml.Name `xml:"body"`
+ 
+-	Content string `xml:",chardata,omitempty"`
++	Content string `xml:",chardata"`
+ 	Lang    string `xml:"lang,attr,omitempty"`
+ }
+ 
+
+From cef045dc585e48d0d023674120fa1cf10d93fe40 Mon Sep 17 00:00:00 2001
+From: Derek Brown <derekbrown@improbable.io>
+Date: Mon, 18 Jan 2021 14:15:40 -0500
+Subject: [PATCH 7/8] feat: refactor message body and subject structs as common
+ LocalizedString
+
+---
+ stanza/message.go | 23 ++++++-----------------
+ 1 file changed, 6 insertions(+), 17 deletions(-)
+
+diff --git a/stanza/message.go b/stanza/message.go
+index 2a74a14..954d515 100644
+--- a/stanza/message.go
++++ b/stanza/message.go
+@@ -8,18 +8,7 @@ import (
+ // ============================================================================
+ // Message Packet
+ 
+-// Subject is an element of a message
+-type Subject struct {
+-	XMLName xml.Name `xml:"subject"`
+-
+-	Content string `xml:",chardata"`
+-	Lang    string `xml:"lang,attr,omitempty"`
+-}
+-
+-// Body is an element of a message
+-type Body struct {
+-	XMLName xml.Name `xml:"body"`
+-
++type LocalizedString struct {
+ 	Content string `xml:",chardata"`
+ 	Lang    string `xml:"lang,attr,omitempty"`
+ }
+@@ -29,11 +18,11 @@ type Message struct {
+ 	XMLName xml.Name `xml:"message"`
+ 	Attrs
+ 
+-	Subject    []Subject      `xml:"subject,omitempty"`
+-	Body       []Body         `xml:"body,omitempty"`
+-	Thread     string         `xml:"thread,omitempty"`
+-	Error      Err            `xml:"error,omitempty"`
+-	Extensions []MsgExtension `xml:",omitempty"`
++	Subject    []LocalizedString `xml:"subject,omitempty"`
++	Body       []LocalizedString `xml:"body,omitempty"`
++	Thread     string            `xml:"thread,omitempty"`
++	Error      Err               `xml:"error,omitempty"`
++	Extensions []MsgExtension    `xml:",omitempty"`
+ }
+ 
+ func (Message) Name() string {
+
+From b235acdc6eb350c5f700372b83e8e99f7c87e2c9 Mon Sep 17 00:00:00 2001
+From: Derek Brown <derekbrown@improbable.io>
+Date: Wed, 20 Jan 2021 09:24:46 -0500
+Subject: [PATCH 8/8] fix: add xml namespace prefix to message lang attrs
+
+---
+ stanza/message.go | 3 ++-
+ stanza/packet.go  | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/stanza/message.go b/stanza/message.go
+index 954d515..a6364b0 100644
+--- a/stanza/message.go
++++ b/stanza/message.go
+@@ -8,9 +8,10 @@ import (
+ // ============================================================================
+ // Message Packet
+ 
++// LocalizedString is a string node with a language attribute.
+ type LocalizedString struct {
+ 	Content string `xml:",chardata"`
+-	Lang    string `xml:"lang,attr,omitempty"`
++	Lang    string `xml:"http://www.w3.org/XML/1998/namespace lang,attr,omitempty"`
+ }
+ 
+ // Message implements RFC 6120 - A.5 Client Namespace (a part)
+diff --git a/stanza/packet.go b/stanza/packet.go
+index 567796d..00f76ba 100644
+--- a/stanza/packet.go
++++ b/stanza/packet.go
+@@ -10,7 +10,7 @@ type Attrs struct {
+ 	Id   string     `xml:"id,attr,omitempty"`
+ 	From string     `xml:"from,attr,omitempty"`
+ 	To   string     `xml:"to,attr,omitempty"`
+-	Lang string     `xml:"lang,attr,omitempty"`
++	Lang string     `xml:"http://www.w3.org/XML/1998/namespace lang,attr,omitempty"`
+ }
+ 
+ type packetFormatter interface {

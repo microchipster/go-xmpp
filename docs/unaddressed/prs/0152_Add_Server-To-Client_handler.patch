@@ -1,0 +1,89 @@
+From 7745e1f718c9cdce0055eb6dbd7c641ca32dd55b Mon Sep 17 00:00:00 2001
+From: vduduh <vladimir@duduh.ru>
+Date: Thu, 27 Feb 2020 23:18:50 +0300
+Subject: [PATCH 1/2] Add Server-To-Client handler
+
+https://xmpp.org/extensions/xep-0199.html#s2c
+---
+ client.go | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/client.go b/client.go
+index bd40c38..48f19ae 100644
+--- a/client.go
++++ b/client.go
+@@ -309,6 +309,19 @@ func (c *Client) recv(state SMState, keepaliveQuit chan<- struct{}) {
+ 
+ 		// Handle stream errors
+ 		switch packet := val.(type) {
++		case *stanza.IQ:
++			if val.(*stanza.IQ).Any != nil && val.(*stanza.IQ).Any.XMLName.Local == "ping" {
++				err = c.Send(&stanza.IQ{Attrs: stanza.Attrs{
++					Id:   val.(*stanza.IQ).Id,
++					Type: stanza.IQTypeResult,
++					From: val.(*stanza.IQ).To,
++					To:   val.(*stanza.IQ).From,
++				}})
++				if err != nil {
++					c.ErrorHandler(err)
++				}
++				continue
++			}
+ 		case stanza.StreamError:
+ 			c.router.route(c, val)
+ 			close(keepaliveQuit)
+
+From ee38abcca979e8e51f52064ded2d287b954bdb5d Mon Sep 17 00:00:00 2001
+From: vduduh <vladimir@duduh.ru>
+Date: Fri, 28 Feb 2020 18:32:17 +0300
+Subject: [PATCH 2/2] Move code to router
+
+---
+ client.go | 13 -------------
+ router.go |  9 +++++++++
+ 2 files changed, 9 insertions(+), 13 deletions(-)
+
+diff --git a/client.go b/client.go
+index 48f19ae..bd40c38 100644
+--- a/client.go
++++ b/client.go
+@@ -309,19 +309,6 @@ func (c *Client) recv(state SMState, keepaliveQuit chan<- struct{}) {
+ 
+ 		// Handle stream errors
+ 		switch packet := val.(type) {
+-		case *stanza.IQ:
+-			if val.(*stanza.IQ).Any != nil && val.(*stanza.IQ).Any.XMLName.Local == "ping" {
+-				err = c.Send(&stanza.IQ{Attrs: stanza.Attrs{
+-					Id:   val.(*stanza.IQ).Id,
+-					Type: stanza.IQTypeResult,
+-					From: val.(*stanza.IQ).To,
+-					To:   val.(*stanza.IQ).From,
+-				}})
+-				if err != nil {
+-					c.ErrorHandler(err)
+-				}
+-				continue
+-			}
+ 		case stanza.StreamError:
+ 			c.router.route(c, val)
+ 			close(keepaliveQuit)
+diff --git a/router.go b/router.go
+index f20af5b..3e6d0e2 100644
+--- a/router.go
++++ b/router.go
+@@ -55,6 +55,15 @@ func (r *Router) route(s Sender, p stanza.Packet) {
+ 			close(route.result)
+ 			return
+ 		}
++		if iq.Any != nil && iq.Any.XMLName.Local == "ping" {
++			_ = s.Send(&stanza.IQ{Attrs: stanza.Attrs{
++				Id:   iq.Id,
++				Type: stanza.IQTypeResult,
++				From: iq.To,
++				To:   iq.From,
++			}})
++			return
++		}
+ 	}
+ 
+ 	var match RouteMatch

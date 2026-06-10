@@ -1,0 +1,6 @@
+PR #168: Fix `client is not disconnected` error with components
+Fork repo: https://github.com/davej-improbable/go-xmpp
+Head ref: master
+Head sha: 19e022291031b33cafc6eab7bf434e5d6bfec98c
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

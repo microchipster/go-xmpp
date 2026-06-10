@@ -1,0 +1,6 @@
+PR #152: Add Server-To-Client handler
+Fork repo: https://github.com/vduduh/go-xmpp
+Head ref: Server-To-Client-Ping
+Head sha: ee38abcca979e8e51f52064ded2d287b954bdb5d
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

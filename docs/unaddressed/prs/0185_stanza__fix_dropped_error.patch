@@ -1,0 +1,23 @@
+From b86b31a23e227310a05fd6044746137eadab81d1 Mon Sep 17 00:00:00 2001
+From: Lars Lehtonen <lars.lehtonen@gmail.com>
+Date: Thu, 3 Jul 2025 12:37:21 -0700
+Subject: [PATCH] stanza: fix dropped error
+
+---
+ stanza/error.go | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/stanza/error.go b/stanza/error.go
+index 5f42018..e60d297 100644
+--- a/stanza/error.go
++++ b/stanza/error.go
+@@ -99,6 +99,9 @@ func (x Err) MarshalXML(e *xml.Encoder, start xml.StartElement) (err error) {
+ 		start.Attr = append(start.Attr, typ)
+ 	}
+ 	err = e.EncodeToken(start)
++	if err != nil {
++		return err
++	}
+ 
+ 	// SubTags
+ 	// Reason
