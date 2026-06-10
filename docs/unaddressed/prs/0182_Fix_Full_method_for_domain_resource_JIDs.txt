@@ -1,0 +1,6 @@
+PR #182: Fix Full method for domain/resource JIDs
+Fork repo: https://github.com/bodqhrohro/go-xmpp
+Head ref: jid-full-fix
+Head sha: 39809352e2710b4de1659da891e825d0dd98531d
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

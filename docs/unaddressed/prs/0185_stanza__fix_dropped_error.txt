@@ -1,0 +1,6 @@
+PR #185: stanza: fix dropped error
+Fork repo: https://github.com/alrs/go-xmpp
+Head ref: stanza-err
+Head sha: b86b31a23e227310a05fd6044746137eadab81d1
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

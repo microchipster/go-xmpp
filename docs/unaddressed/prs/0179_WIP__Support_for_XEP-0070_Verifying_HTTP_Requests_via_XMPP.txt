@@ -1,0 +1,6 @@
+PR #179: WIP: Support for XEP-0070 Verifying HTTP Requests via XMPP
+Fork repo: https://github.com/jarobase/go-xmpp
+Head ref: xep-0070-httpauth
+Head sha: 1346ff2a1327414bca0cf4d8b6dba5bea27aa3fc
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

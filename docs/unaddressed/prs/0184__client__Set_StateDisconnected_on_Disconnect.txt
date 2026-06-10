@@ -1,0 +1,6 @@
+PR #184: [client] Set StateDisconnected on Disconnect
+Fork repo: https://github.com/jaredledvina/go-xmpp
+Head ref: jared.ledvina/set-disconnected-state
+Head sha: ab19715da354bcb628d483825f1aa03c59b27f2a
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main

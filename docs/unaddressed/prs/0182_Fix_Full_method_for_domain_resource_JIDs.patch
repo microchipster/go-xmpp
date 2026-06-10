@@ -1,0 +1,35 @@
+From 39809352e2710b4de1659da891e825d0dd98531d Mon Sep 17 00:00:00 2001
+From: Bohdan Horbeshko <bodqhrohro@gmail.com>
+Date: Tue, 24 May 2022 16:26:48 -0400
+Subject: [PATCH] Fix Full method for domain/resource JIDs
+
+---
+ stanza/jid.go      | 2 +-
+ stanza/jid_test.go | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/stanza/jid.go b/stanza/jid.go
+index c3677a9..62dee7d 100644
+--- a/stanza/jid.go
++++ b/stanza/jid.go
+@@ -54,7 +54,7 @@ func (j *Jid) Full() string {
+ 	if j.Resource == "" {
+ 		return j.Bare()
+ 	} else if j.Node == "" {
+-		return j.Node + "/" + j.Resource
++		return j.Domain + "/" + j.Resource
+ 	} else {
+ 		return j.Node + "@" + j.Domain + "/" + j.Resource
+ 	}
+diff --git a/stanza/jid_test.go b/stanza/jid_test.go
+index 781221d..5fd02a9 100644
+--- a/stanza/jid_test.go
++++ b/stanza/jid_test.go
+@@ -63,6 +63,7 @@ func TestIncorrectJids(t *testing.T) {
+ func TestFull(t *testing.T) {
+ 	fullJids := []string{
+ 		"test@domain.com/my resource",
++		"domain.com/my resource",
+ 		"test@domain.com",
+ 		"domain.com",
+ 	}

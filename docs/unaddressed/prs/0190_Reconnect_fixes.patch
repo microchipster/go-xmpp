@@ -1,0 +1,121 @@
+From 1e6db86e06ef260ff84411676bab8f75fc2b8e07 Mon Sep 17 00:00:00 2001
+From: Matthew Wild <mwild1@gmail.com>
+Date: Thu, 9 Oct 2025 10:11:59 +0100
+Subject: [PATCH 1/4] xmpp_transport: Reset encryption status when initiating
+ new connection
+
+If the transport has been previously connected, the isSecure flag may still
+be set from a previous connection. This can lead to not negotiating TLS on the
+new connection. In practice this caused a stream error, because the post-TLS
+stream reset was still sent unconditionally.
+
+This change makes reconnecting a transport negotiate TLS successfully.
+---
+ xmpp_transport.go | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/xmpp_transport.go b/xmpp_transport.go
+index 9e7cb21..fd53ddb 100644
+--- a/xmpp_transport.go
++++ b/xmpp_transport.go
+@@ -35,6 +35,9 @@ var clientStreamOpen = fmt.Sprintf("<?xml version='1.0'?><stream:stream to='%%s'
+ func (t *XMPPTransport) Connect() (string, error) {
+ 	var err error
+ 
++	// Since we're starting a new connection, reset the encryption status
++	t.isSecure = false
++
+ 	t.conn, err = net.DialTimeout("tcp", t.Config.Address, time.Duration(t.Config.ConnectTimeout)*time.Second)
+ 	if err != nil {
+ 		return "", NewConnError(err, true)
+
+From d02ca114d9eb6ad2f7d7e7319038ab28359bc7e8 Mon Sep 17 00:00:00 2001
+From: Matthew Wild <mwild1@gmail.com>
+Date: Thu, 9 Oct 2025 10:18:15 +0100
+Subject: [PATCH 2/4] xmpp_transport: Add buffer to closeChan to prevent
+ deadlock
+
+closeChan is used to communicate that a stream close has been received.
+
+In the case where the client initiates the stream closure, this works:
+
+1) client sends stream close
+2) client reads from closeChan, waiting for the server's stream close
+
+In the case where the server initiates the stream closure, it failed:
+
+1) transport writes to closeChan
+x) client is not waiting on closeChan, so the write blocks and transport hangs
+
+This change allows up to one event to be written asynchronously to closeChan.
+After the client is notified about the disconnection, it will read from
+closeChan as in the client-initiated flow but will simply find the stream
+close already there.
+---
+ xmpp_transport.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/xmpp_transport.go b/xmpp_transport.go
+index fd53ddb..c7d2022 100644
+--- a/xmpp_transport.go
++++ b/xmpp_transport.go
+@@ -43,7 +43,7 @@ func (t *XMPPTransport) Connect() (string, error) {
+ 		return "", NewConnError(err, true)
+ 	}
+ 
+-	t.closeChan = make(chan stanza.StreamClosePacket)
++	t.closeChan = make(chan stanza.StreamClosePacket, 1)
+ 	t.readWriter = newStreamLogger(t.conn, t.logFile)
+ 	t.decoder = xml.NewDecoder(bufio.NewReaderSize(t.readWriter, maxPacketSize))
+ 	t.decoder.CharsetReader = t.Config.CharsetReader
+
+From 5007e174e147ebe0bff35cf56c5ee070fc6e5fd0 Mon Sep 17 00:00:00 2001
+From: Matthew Wild <mwild1@gmail.com>
+Date: Thu, 9 Oct 2025 10:23:24 +0100
+Subject: [PATCH 3/4] client: Notify transport when stream close is received
+
+---
+ client.go | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/client.go b/client.go
+index 9969472..1242dd3 100644
+--- a/client.go
++++ b/client.go
+@@ -411,7 +411,8 @@ func (c *Client) recv(keepaliveQuit chan<- struct{}) {
+ 		case stanza.StreamClosePacket:
+ 			// TCP messages should arrive in order, so we can expect to get nothing more after this occurs
+ 			c.transport.ReceivedStreamClose()
+-			return
++			c.Disconnect()
++			continue
+ 		default:
+ 			c.Session.SMState.Inbound++
+ 		}
+
+From be6f23da782b8ab8daa51ccc095b41498b8ad545 Mon Sep 17 00:00:00 2001
+From: Matthew Wild <mwild1@gmail.com>
+Date: Thu, 9 Oct 2025 10:24:07 +0100
+Subject: [PATCH 4/4] client: Notify session when explicitly disconnected
+
+---
+ client.go | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/client.go b/client.go
+index 1242dd3..0a29605 100644
+--- a/client.go
++++ b/client.go
+@@ -296,7 +296,11 @@ func (c *Client) Resume() error {
+ // Disconnect disconnects the client from the server, sending a stream close nonza and closing the TCP connection.
+ func (c *Client) Disconnect() error {
+ 	if c.transport != nil {
+-		return c.transport.Close()
++		err := c.transport.Close()
++		if c.Session != nil {
++			c.disconnected(c.Session.SMState)
++		}
++		return err
+ 	}
+ 	// No transport so no connection.
+ 	return nil

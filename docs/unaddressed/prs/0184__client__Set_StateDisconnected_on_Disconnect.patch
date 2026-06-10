@@ -1,0 +1,22 @@
+From ab19715da354bcb628d483825f1aa03c59b27f2a Mon Sep 17 00:00:00 2001
+From: Jared Ledvina <jared@techsmix.net>
+Date: Sat, 12 Apr 2025 10:45:49 -0400
+Subject: [PATCH] [client] Set StateDisconnected on Disconnect
+
+Signed-off-by: Jared Ledvina <jared@techsmix.net>
+---
+ client.go | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/client.go b/client.go
+index 9969472..9edf6f5 100644
+--- a/client.go
++++ b/client.go
+@@ -298,6 +298,7 @@ func (c *Client) Disconnect() error {
+ 	if c.transport != nil {
+ 		return c.transport.Close()
+ 	}
++	c.CurrentState.setState(StateDisconnected)
+ 	// No transport so no connection.
+ 	return nil
+ }

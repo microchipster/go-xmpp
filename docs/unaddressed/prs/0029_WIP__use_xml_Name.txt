@@ -1,0 +1,6 @@
+PR #29: WIP: use xml Name
+Fork repo: https://github.com/genofire/go-xmpp
+Head ref: xmlname
+Head sha: 7902e79f8132bda6aba248cba3cc1f5a7167bafc
+Base repo: https://github.com/FluuxIO/go-xmpp
+Base ref: main
