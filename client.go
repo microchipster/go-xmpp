@@ -316,7 +316,11 @@ func (c *Client) Resume() error {
 // Disconnect disconnects the client from the server, sending a stream close nonza and closing the TCP connection.
 func (c *Client) Disconnect() error {
 	if c.transport != nil {
-		return c.transport.Close()
+		err := c.transport.Close()
+		if c.Session != nil {
+			c.disconnected(c.Session.SMState)
+		}
+		return err
 	}
 	// No transport so no connection.
 	return nil
@@ -451,8 +455,8 @@ func (c *Client) recv(keepaliveQuit chan<- struct{}) {
 		case stanza.StreamClosePacket:
 			// TCP messages should arrive in order, so we can expect to get nothing more after this occurs
 			c.transport.ReceivedStreamClose()
-			c.disconnected(c.Session.SMState)
-			return
+			c.Disconnect()
+			continue
 		case stanza.Message, stanza.Presence, *stanza.IQ:
 			c.Session.SMState.Inbound++
 		}
