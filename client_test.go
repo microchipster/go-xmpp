@@ -340,6 +340,9 @@ func TestClient_Disconnect(t *testing.T) {
 		t.Errorf("Could not ping but not disconnected yet")
 	}
 	c.Disconnect()
+	if c.CurrentState.getState() != StateDisconnected {
+		t.Errorf("Did not update state to disconnected")
+	}
 	err = c.transport.Ping()
 	if err == nil {
 		t.Errorf("Did not disconnect properly")
