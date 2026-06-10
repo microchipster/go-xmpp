@@ -77,3 +77,19 @@ func TestParsingDelegationIQ(t *testing.T) {
 		t.Errorf("Could not find mood node name on delegated publish: %#v\n", iq)
 	}
 }
+
+func TestParsingDelegationIQReturnsForwardedDecodeError(t *testing.T) {
+	packetStr := `<iq to='service.localhost' from='localhost' type='set' id='1'>
+ <delegation xmlns='urn:xmpp:delegation:1'>
+  <forwarded xmlns='urn:xmpp:forward:0'>
+   <bogus xmlns='jabber:client'/>
+  </forwarded>
+ </delegation>
+</iq>`
+
+	var iq IQ
+	data := []byte(packetStr)
+	if err := xml.Unmarshal(data, &iq); err == nil {
+		t.Fatal("expected xml.Unmarshal to return an error for invalid forwarded stanza")
+	}
+}
