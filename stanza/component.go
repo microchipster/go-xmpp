@@ -73,9 +73,11 @@ func (f *Forwarded) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		switch tt := t.(type) {
 
 		case xml.StartElement:
-			if packet, err := decodeClient(d, tt); err == nil {
-				f.Stanza = packet
+			packet, err := decodeClient(d, tt)
+			if err != nil {
+				return err
 			}
+			f.Stanza = packet
 
 		case xml.EndElement:
 			if tt == start.End() {
