@@ -2,6 +2,7 @@ package xmpp
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -13,11 +14,15 @@ import (
 )
 
 // TODO: Should I move this as an extension of the client?
-//    I should probably make the code more modular, but keep concern separated to keep it simple.
+//
+//	I should probably make the code more modular, but keep concern separated to keep it simple.
 type ServerCheck struct {
-	address string
-	domain  string
+	address   string
+	domain    string
+	directTLS bool
 }
+
+var systemCertPool = x509.SystemCertPool
 
 func NewChecker(address, domain string) (*ServerCheck, error) {
 	client := ServerCheck{}
@@ -34,11 +39,22 @@ func NewChecker(address, domain string) (*ServerCheck, error) {
 		client.domain = host
 	}
 
+	if _, port, err := net.SplitHostPort(client.address); err == nil && port == "5223" {
+		client.directTLS = true
+	}
+
 	return &client, nil
 }
 
 // Check triggers actual TCP connection, based on previously defined parameters.
 func (c *ServerCheck) Check() error {
+	if c.directTLS {
+		return c.checkDirectTLS()
+	}
+	return c.checkStartTLS()
+}
+
+func (c *ServerCheck) checkStartTLS() error {
 	var tcpconn net.Conn
 	var err error
 
@@ -47,6 +63,7 @@ func (c *ServerCheck) Check() error {
 	if err != nil {
 		return err
 	}
+	defer tcpconn.Close()
 
 	decoder := xml.NewDecoder(tcpconn)
 
@@ -89,25 +106,57 @@ func (c *ServerCheck) Check() error {
 			return fmt.Errorf("expecting starttls proceed: %s", err)
 		}
 
-		var tlsConfig tls.Config
-		tlsConfig.ServerName = c.domain
-		tlsConn := tls.Client(tcpconn, &tlsConfig)
-		// We convert existing connection to TLS
-		if err = tlsConn.Handshake(); err != nil {
+		tlsConn, err := c.startTLSConn(tcpconn)
+		if err != nil {
 			return err
 		}
-
-		// We check that cert matches hostname
-		if err = tlsConn.VerifyHostname(c.domain); err != nil {
-			return err
-		}
-
-		if err = checkExpiration(tlsConn); err != nil {
-			return err
-		}
-		return nil
+		defer tlsConn.Close()
+		return c.verifyTLSConn(tlsConn)
 	}
 	return errors.New("TLS not supported on server")
+}
+
+func (c *ServerCheck) checkDirectTLS() error {
+	timeout := 15 * time.Second
+	tcpconn, err := net.DialTimeout("tcp", c.address, timeout)
+	if err != nil {
+		return err
+	}
+	defer tcpconn.Close()
+
+	tlsConn, err := c.startTLSConn(tcpconn)
+	if err != nil {
+		return err
+	}
+	defer tlsConn.Close()
+	return c.verifyTLSConn(tlsConn)
+}
+
+func (c *ServerCheck) startTLSConn(conn net.Conn) (*tls.Conn, error) {
+	tlsConfig, err := c.tlsConfig()
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.Handshake(); err != nil {
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
+func (c *ServerCheck) verifyTLSConn(tlsConn *tls.Conn) error {
+	if err := tlsConn.VerifyHostname(c.domain); err != nil {
+		return err
+	}
+	return checkExpiration(tlsConn)
+}
+
+func (c *ServerCheck) tlsConfig() (*tls.Config, error) {
+	roots, err := systemCertPool()
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{ServerName: c.domain, RootCAs: roots}, nil
 }
 
 // Check expiration date for the whole certificate chain and returns an error
