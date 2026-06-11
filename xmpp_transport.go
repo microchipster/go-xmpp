@@ -50,15 +50,16 @@ func (t *XMPPTransport) Connect() (string, error) {
 }
 
 func (t *XMPPTransport) StartStream() (string, error) {
-	if _, err := fmt.Fprintf(t, t.openStatement, t.Config.Domain); err != nil {
+	streamOpen := fmt.Sprintf(t.openStatement, t.Config.Domain)
+	if _, err := t.Write([]byte(streamOpen)); err != nil {
 		t.Close()
-		return "", NewConnError(err, true)
+		return "", NewConnError(fmt.Errorf("write stream open: %w", err), true)
 	}
 
 	sessionID, err := stanza.InitStream(t.GetDecoder())
 	if err != nil {
 		t.Close()
-		return "", NewConnError(err, false)
+		return "", NewConnError(fmt.Errorf("read stream open: %w", err), false)
 	}
 	return sessionID, nil
 }
@@ -195,14 +196,22 @@ func (t *XMPPTransport) Read(p []byte) (n int, err error) {
 	if t.readWriter == nil {
 		return 0, errors.New("cannot read: not connected, no readwriter")
 	}
-	return t.readWriter.Read(p)
+	n, err = t.readWriter.Read(p)
+	if err != nil {
+		return n, fmt.Errorf("tcp read: %w", err)
+	}
+	return n, nil
 }
 
 func (t *XMPPTransport) Write(p []byte) (n int, err error) {
 	if t.readWriter == nil {
 		return 0, errors.New("cannot write: not connected, no readwriter")
 	}
-	return t.readWriter.Write(p)
+	n, err = t.readWriter.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("tcp write via %T: %w", t.readWriter, err)
+	}
+	return n, nil
 }
 
 func (t *XMPPTransport) Close() error {
