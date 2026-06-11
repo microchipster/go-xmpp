@@ -39,3 +39,10 @@ Yet, none of the `<presence/>`s have been seen at this point.
 Inability to distinguish between empty and not-present `body` and `subject`   https://github.com/FluuxIO/go-xmpp/issues/167 and delivery of `<message/>` and `<presence/>` out of order means it's not possible to know which users were already present in the room and which entered later, despite XEP-0045 allowing for this scenario.
 
 This is on ac5b066815b21708dacd62a169508d0aa408cee6 from May 7 2020, currently the latest commit.
+
+---
+**Addressed note**
+
+The client receive loop now routes packets inline instead of spawning a goroutine, so sequential presence/message stanzas are observed in arrival order. Combined with the pointer-backed message fields from `#0167`, MUC join flows can distinguish empty subject/body stanzas without reordering them away from the corresponding presence updates.
+
+---

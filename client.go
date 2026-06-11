@@ -55,7 +55,7 @@ const (
 	StateSessionEstablished
 	StateStreamError
 	StatePermanentError
-	InitialPresence = "<presence/>"
+	DefaultInitialPresence = "<presence/>"
 )
 
 // Event is a structure use to convey event changes related to client state. This
@@ -309,7 +309,11 @@ func (c *Client) postSessionSetup() error {
 	}
 	// TODO: Do we always want to send initial presence automatically ?
 	// Do we need an option to avoid that or do we rely on client to send the presence itself ?
-	if err := c.sendWithWriter(c.transport, []byte(InitialPresence)); err != nil {
+	initialPresence := c.config.InitialPresence
+	if initialPresence == "" {
+		initialPresence = DefaultInitialPresence
+	}
+	if err := c.sendWithWriter(c.transport, []byte(initialPresence)); err != nil {
 		return err
 	}
 	if c.PostConnectHook != nil {
@@ -650,10 +654,8 @@ func (c *Client) recv(keepaliveQuit chan<- struct{}) {
 		case stanza.Message, stanza.Presence, *stanza.IQ:
 			c.Session.SMState.Inbound++
 		}
-		// Do normal route processing in a go-routine so we can immediately
-		// start receiving other stanzas. This also allows route handlers to
-		// send and receive more stanzas.
-		go c.router.route(c, val)
+		// Preserve stanza order for callers that rely on arrival order.
+		c.router.route(c, val)
 	}
 }
 

@@ -26,6 +26,8 @@ type Config struct {
 	StreamManagementEnable bool
 	// Enable stream management resume capability
 	StreamManagementResume bool
+	// InitialPresence is sent after the connection is established, unless empty.
+	InitialPresence string
 }
 
 // IsStreamResumable tells if a stream session is resumable by reading the "config" part of a client.

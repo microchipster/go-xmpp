@@ -21,7 +21,7 @@ const msg_const = `
 
 func TestSerializationHint(t *testing.T) {
 	msg := stanza.NewMessage(stanza.Attrs{To: "juliet@capulet.lit/laptop", From: "romeo@montague.lit/laptop"})
-	msg.Body = "V unir avtugf pybnx gb uvqr zr sebz gurve fvtug"
+	msg.Body = stanza.StringPtr("V unir avtugf pybnx gb uvqr zr sebz gurve fvtug")
 	msg.Extensions = append(msg.Extensions, stanza.HintNoCopy{}, stanza.HintNoPermanentStore{}, stanza.HintNoStore{}, stanza.HintStore{})
 	data, _ := xml.Marshal(msg)
 	if strings.ReplaceAll(strings.Join(strings.Fields(msg_const), ""), "\n", "") != strings.Join(strings.Fields(string(data)), "") {
@@ -32,7 +32,7 @@ func TestSerializationHint(t *testing.T) {
 func TestUnmarshalHints(t *testing.T) {
 	// Init message as in the const value
 	msgConst := stanza.NewMessage(stanza.Attrs{To: "juliet@capulet.lit/laptop", From: "romeo@montague.lit/laptop"})
-	msgConst.Body = "V unir avtugf pybnx gb uvqr zr sebz gurve fvtug"
+	msgConst.Body = stanza.StringPtr("V unir avtugf pybnx gb uvqr zr sebz gurve fvtug")
 	msgConst.Extensions = append(msgConst.Extensions, &stanza.HintNoCopy{}, &stanza.HintNoPermanentStore{}, &stanza.HintNoStore{}, &stanza.HintStore{})
 
 	// Compare message with the const value
@@ -45,8 +45,8 @@ func TestUnmarshalHints(t *testing.T) {
 	if msgConst.XMLName.Local != msg.XMLName.Local {
 		t.Fatalf("message tags do not match. Expected: %s, Actual: %s", msgConst.XMLName.Local, msg.XMLName.Local)
 	}
-	if msgConst.Body != msg.Body {
-		t.Fatalf("message bodies do not match. Expected: %s, Actual: %s", msgConst.Body, msg.Body)
+	if stanza.StringValue(msgConst.Body) != stanza.StringValue(msg.Body) {
+		t.Fatalf("message bodies do not match. Expected: %s, Actual: %s", stanza.StringValue(msgConst.Body), stanza.StringValue(msg.Body))
 	}
 
 	if !reflect.DeepEqual(msgConst.Attrs, msg.Attrs) {

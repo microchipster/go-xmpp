@@ -37,6 +37,23 @@ func NewMessage(a Attrs) Message {
 	}
 }
 
+// StringPtr wraps a plain string into a single-variant LocalizedString slice.
+// It exists so callers can set Message.Body / Message.Subject without spelling
+// out the slice type, e.g. msg.Body = StringPtr("hello").
+func StringPtr(v string) []LocalizedString {
+	return []LocalizedString{{Content: v}}
+}
+
+// StringValue returns the first variant's text, or an empty string when no
+// variant is present. Message bodies can carry multiple language variants;
+// this helper is for the common single-variant case.
+func StringValue(v []LocalizedString) string {
+	if len(v) == 0 {
+		return ""
+	}
+	return v[0].Content
+}
+
 // Get search and extracts a specific extension on a message.
 // It receives a pointer to an MsgExtension. It will panic if the caller
 // does not pass a pointer.
@@ -45,10 +62,11 @@ func NewMessage(a Attrs) Message {
 // It will return false if the extension is not found on the message.
 //
 // Example usage:
-//   var oob xmpp.OOB
-//   if ok := msg.Get(&oob); ok {
-//     // oob extension has been found
-//	 }
+//
+//	  var oob xmpp.OOB
+//	  if ok := msg.Get(&oob); ok {
+//	    // oob extension has been found
+//		 }
 func (msg *Message) Get(ext MsgExtension) bool {
 	target := reflect.ValueOf(ext)
 	if target.Kind() != reflect.Ptr {
@@ -89,7 +107,7 @@ func (msg *Message) XMPPFormat() string {
 
 // UnmarshalXML implements custom parsing for messages
 func (msg *Message) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	msg.XMLName = start.Name
+	*msg = Message{XMLName: start.Name}
 
 	// Extract packet attributes
 	for _, attr := range start.Attr {

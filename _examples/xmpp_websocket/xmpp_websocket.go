@@ -48,5 +48,5 @@ func handleMessage(s xmpp.Sender, p stanza.Packet) {
 		return
 	}
 
-	_, _ = fmt.Fprintf(os.Stdout, "Body = %s - from = %s\n", msg.Body, msg.From)
+	_, _ = fmt.Fprintf(os.Stdout, "Body = %s - from = %s\n", stanza.StringValue(msg.Body), msg.From)
 }

@@ -156,8 +156,8 @@ func startClient(g *gocui.Gui, config *config) {
 				_, err := fmt.Fprintf(v, "Error from server : %s : %s \n", msg.Error.Reason, msg.XMLName.Space)
 				return err
 			}
-			if len(strings.TrimSpace(msg.Body)) != 0 {
-				_, err := fmt.Fprintf(v, "%s : %s \n", msg.From, msg.Body)
+			if len(strings.TrimSpace(stanza.StringValue(msg.Body))) != 0 {
+				_, err := fmt.Fprintf(v, "%s : %s \n", msg.From, stanza.StringValue(msg.Body))
 				return err
 			}
 			return nil
@@ -210,7 +210,7 @@ func startMessaging(client xmpp.Sender, config *config, g *gocui.Gui) {
 			}
 			return
 		case text = <-textChan:
-			reply := stanza.Message{Attrs: stanza.Attrs{To: correspondent, Type: stanza.MessageTypeChat}, Body: text}
+			reply := stanza.Message{Attrs: stanza.Attrs{To: correspondent, Type: stanza.MessageTypeChat}, Body: stanza.StringPtr(text)}
 			if logger != nil {
 				raw, _ := xml.Marshal(reply)
 				logger.Println(string(raw))
