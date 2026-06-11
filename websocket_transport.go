@@ -122,7 +122,10 @@ func (t WebsocketTransport) GetDomain() string {
 	return t.Config.Domain
 }
 
-func (t WebsocketTransport) GetDecoder() *xml.Decoder {
+func (t *WebsocketTransport) GetDecoder() *xml.Decoder {
+	if t.decoder == nil {
+		t.decoder = newEmptyDecoder()
+	}
 	return t.decoder
 }
 
