@@ -12,6 +12,10 @@ import (
 var ErrTransportProtocolNotSupported = errors.New("transport protocol not supported")
 var ErrTLSNotSupported = errors.New("transport does not support StartTLS")
 
+func newEmptyDecoder() *xml.Decoder {
+	return xml.NewDecoder(strings.NewReader(""))
+}
+
 // TODO: rename to transport config?
 type TransportConfiguration struct {
 	// Address is the XMPP Host and port to connect to. Host is of
@@ -53,13 +57,17 @@ type Transport interface {
 // For XMPPTransport it is mandatory for the address to have a port specified.
 func NewClientTransport(config TransportConfiguration) Transport {
 	if strings.HasPrefix(config.Address, "ws:") || strings.HasPrefix(config.Address, "wss:") {
-		return &WebsocketTransport{Config: config}
+		return &WebsocketTransport{
+			Config:  config,
+			decoder: newEmptyDecoder(),
+		}
 	}
 
 	config.Address = ensurePort(config.Address, 5222)
 	return &XMPPTransport{
 		Config:        config,
 		openStatement: clientStreamOpen,
+		decoder:       newEmptyDecoder(),
 	}
 }
 
@@ -75,5 +83,6 @@ func NewComponentTransport(config TransportConfiguration) (Transport, error) {
 	return &XMPPTransport{
 		Config:        config,
 		openStatement: componentStreamOpen,
+		decoder:       newEmptyDecoder(),
 	}, nil
 }
