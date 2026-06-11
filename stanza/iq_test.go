@@ -122,6 +122,39 @@ func TestErrorTag(t *testing.T) {
 	}
 }
 
+func TestErrorTagWithoutCode(t *testing.T) {
+	xError := stanza.Err{
+		XMLName: xml.Name{Local: "error"},
+		Type:    "cancel",
+		Reason:  "service-unavailable",
+		Text:    "User session not found",
+	}
+
+	data, err := xml.Marshal(xError)
+	if err != nil {
+		t.Errorf("cannot marshal xml structure: %s", err)
+	}
+
+	if strings.Contains(string(data), "code=") {
+		t.Fatalf("error code should be omitted when unset: %s", data)
+	}
+	if !strings.Contains(string(data), "<error") {
+		t.Fatalf("error element should still be serialized: %s", data)
+	}
+
+	parsedError := stanza.Err{}
+	if err = xml.Unmarshal(data, &parsedError); err != nil {
+		t.Errorf("Unmarshal(%s) returned error", data)
+	}
+
+	if parsedError.Code != 0 {
+		t.Errorf("unexpected error code: %d", parsedError.Code)
+	}
+	if parsedError.Reason != xError.Reason || parsedError.Text != xError.Text || parsedError.Type != xError.Type {
+		t.Errorf("non matching items\n%s", cmp.Diff(parsedError, xError))
+	}
+}
+
 func TestDiscoItems(t *testing.T) {
 	iq, err := stanza.NewIQ(stanza.Attrs{Type: stanza.IQTypeGet, From: "romeo@montague.net/orchard", To: "catalog.shakespeare.lit", Id: "items3"})
 	if err != nil {

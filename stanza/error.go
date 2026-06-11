@@ -78,18 +78,20 @@ func (x *Err) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 }
 
 func (x Err) MarshalXML(e *xml.Encoder, start xml.StartElement) (err error) {
-	if x.Code == 0 {
+	if x.Code == 0 && x.Type == "" && x.Reason == "" && x.Text == "" {
 		return nil
 	}
 
 	// Encode start element and attributes
 	start.Name = xml.Name{Local: "error"}
 
-	code := xml.Attr{
-		Name:  xml.Name{Local: "code"},
-		Value: strconv.Itoa(x.Code),
+	if x.Code != 0 {
+		code := xml.Attr{
+			Name:  xml.Name{Local: "code"},
+			Value: strconv.Itoa(x.Code),
+		}
+		start.Attr = append(start.Attr, code)
 	}
-	start.Attr = append(start.Attr, code)
 
 	if len(x.Type) > 0 {
 		typ := xml.Attr{
