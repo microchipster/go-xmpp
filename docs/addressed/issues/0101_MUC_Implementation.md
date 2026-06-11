@@ -47,3 +47,7 @@ func postConnect(s xmpp.Sender) {
 }
 ```
 
+---
+**Addressed note**
+
+The library already includes MUC stanza support and tests, and the issue is now treated as implemented/usage guidance rather than missing core functionality.

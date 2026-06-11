@@ -10,10 +10,13 @@ import (
 
 type Session struct {
 	// Session info
-	BindJid      string // Jabber ID as provided by XMPP server
-	StreamId     string
-	Resumed      bool
-	SMState      SMState
+	BindJid  string // Jabber ID as provided by XMPP server
+	StreamId string
+	Resumed  bool
+	SMState  SMState
+	// ServerFeatures holds the stream features advertised before SASL/auth.
+	ServerFeatures stanza.StreamFeatures
+	// Features holds the latest stream features for the current stage.
 	Features     stanza.StreamFeatures
 	TlsEnabled   bool
 	lastPacketId int
@@ -98,7 +101,8 @@ func (s *Session) PacketId() string {
 
 // init gathers information on the session such as stream features from the server.
 func (s *Session) init() {
-	s.Features = s.extractStreamFeatures()
+	s.ServerFeatures = s.extractStreamFeatures()
+	s.Features = s.ServerFeatures
 }
 
 func (s *Session) reset() {

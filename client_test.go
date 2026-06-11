@@ -100,11 +100,20 @@ func TestClient_NoInsecure(t *testing.T) {
 
 // Check that the client is properly tracking features, as session negotiation progresses.
 func TestClient_FeaturesTracking(t *testing.T) {
+	serverDone := make(chan struct{})
 	// Setup Mock server
 	mock := ServerMock{}
 	mock.Start(t, testXMPPAddress, func(t *testing.T, sc *ServerConn) {
-		handlerAbortTLS(t, sc)
-		closeConn(t, sc)
+		checkClientOpenStream(t, sc)
+
+		sendStreamFeaturesWithCaps(t, sc)
+		readAuth(t, sc.decoder)
+		sc.connection.Write([]byte("<success xmlns=\"urn:ietf:params:xml:ns:xmpp-sasl\"/>"))
+
+		checkClientOpenStream(t, sc)
+		sendBindFeature(t, sc)
+		bind(t, sc)
+		serverDone <- struct{}{}
 	})
 
 	// Test / Check result
@@ -114,6 +123,7 @@ func TestClient_FeaturesTracking(t *testing.T) {
 		},
 		Jid:        "test@localhost",
 		Credential: Password("test"),
+		Insecure:   true,
 	}
 
 	var client *Client
@@ -123,9 +133,105 @@ func TestClient_FeaturesTracking(t *testing.T) {
 		t.Errorf("cannot create XMPP client: %s", err)
 	}
 
-	if err = client.Connect(); err == nil {
-		// When insecure is not allowed:
-		t.Errorf("should fail as insecure connection is not allowed and server does not support TLS")
+	if err = client.Connect(); err != nil {
+		t.Fatalf("could not connect client to mock server: %s", err)
+	}
+
+	serverFeatures := client.ServerFeatures()
+	if serverFeatures.Caps.Ver != "server-cap-v1" {
+		t.Fatalf("expected pre-auth server caps to be tracked, got %#v", serverFeatures.Caps)
+	}
+	if len(serverFeatures.Mechanisms.Mechanism) != 1 || serverFeatures.Mechanisms.Mechanism[0] != "PLAIN" {
+		t.Fatalf("expected initial server mechanisms to be tracked, got %#v", serverFeatures.Mechanisms.Mechanism)
+	}
+
+	if client.Session == nil {
+		t.Fatal("expected session to be established")
+	}
+	if client.Session.Features.Bind.XMLName.Space != stanza.NSBind {
+		t.Fatalf("expected post-auth features to be tracked, got %#v", client.Session.Features.Bind)
+	}
+	if client.Session.ServerFeatures.Caps.Ver != "server-cap-v1" {
+		t.Fatalf("expected session server features to remain available, got %#v", client.Session.ServerFeatures.Caps)
+	}
+
+	select {
+	case <-serverDone:
+	case <-time.After(defaultChannelTimeout):
+		t.Fatal("mock server did not finish feature tracking handshake")
+	}
+
+	mock.Stop()
+}
+
+func TestClient_ServerCapabilitiesAreCached(t *testing.T) {
+	serverDone := make(chan struct{})
+	// Setup Mock server
+	mock := ServerMock{}
+	mock.Start(t, testXMPPAddress, func(t *testing.T, sc *ServerConn) {
+		checkClientOpenStream(t, sc)
+
+		sendStreamFeaturesWithCaps(t, sc)
+		readAuth(t, sc.decoder)
+		sc.connection.Write([]byte("<success xmlns=\"urn:ietf:params:xml:ns:xmpp-sasl\"/>"))
+
+		checkClientOpenStream(t, sc)
+		sendBindFeature(t, sc)
+		bind(t, sc)
+		discardPresence(t, sc)
+		respondToIQ(t, sc)
+		serverDone <- struct{}{}
+	})
+
+	config := Config{
+		TransportConfiguration: TransportConfiguration{
+			Address: testXMPPAddress,
+		},
+		Jid:        "test@localhost",
+		Credential: Password("test"),
+		Insecure:   true,
+	}
+
+	var client *Client
+	var err error
+	router := NewRouter()
+	if client, err = NewClient(&config, router, clientDefaultErrorHandler); err != nil {
+		t.Fatalf("cannot create XMPP client: %s", err)
+	}
+
+	if err = client.Connect(); err != nil {
+		t.Fatalf("XMPP connection failed: %s", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	info, err := client.ServerCapabilities(ctx)
+	if err != nil {
+		t.Fatalf("failed to fetch server capabilities: %v", err)
+	}
+	if !info.HasFeature("vcard-temp") {
+		t.Fatalf("expected server disco info to include vcard-temp, got %#v", info.Features)
+	}
+	if !info.HasFeature("http://jabber.org/protocol/address") {
+		t.Fatalf("expected server disco info to include address feature, got %#v", info.Features)
+	}
+
+	select {
+	case <-serverDone:
+	case <-time.After(defaultChannelTimeout):
+		t.Fatal("mock server did not answer the initial capabilities request")
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel2()
+
+	info2, err := client.ServerCapabilities(ctx2)
+	if err != nil {
+		t.Fatalf("expected cached capabilities lookup to succeed, got %v", err)
+	}
+	if !info2.HasFeature("vcard-temp") || !info2.HasFeature("http://jabber.org/protocol/address") {
+		t.Fatalf("cached capabilities lost features: %#v", info2.Features)
 	}
 
 	mock.Stop()
