@@ -21,6 +21,7 @@ type XMPPTransport struct {
 	openStatement string
 	Config        TransportConfiguration
 	TLSConfig     *tls.Config
+	deadline      time.Time
 	decoder       *xml.Decoder
 	conn          net.Conn
 	readWriter    io.ReadWriter
@@ -46,6 +47,11 @@ func (t *XMPPTransport) Connect() (string, error) {
 	t.readWriter = newStreamLogger(t.conn, t.logFile)
 	t.decoder = xml.NewDecoder(bufio.NewReaderSize(t.readWriter, maxPacketSize))
 	t.decoder.CharsetReader = t.Config.CharsetReader
+	if !t.deadline.IsZero() {
+		if err := t.conn.SetDeadline(t.deadline); err != nil {
+			return "", NewConnError(err, true)
+		}
+	}
 	return t.StartStream()
 }
 
@@ -104,6 +110,11 @@ func (t *XMPPTransport) StartTLS() error {
 	t.readWriter = newStreamLogger(tlsConn, t.logFile)
 	t.decoder = xml.NewDecoder(bufio.NewReaderSize(t.readWriter, maxPacketSize))
 	t.decoder.CharsetReader = t.Config.CharsetReader
+	if !t.deadline.IsZero() {
+		if err := t.conn.SetDeadline(t.deadline); err != nil {
+			return err
+		}
+	}
 
 	if !t.TLSConfig.InsecureSkipVerify {
 		if err := tlsConn.VerifyHostname(t.Config.Domain); err != nil {
@@ -188,6 +199,14 @@ func (t *XMPPTransport) Ping() error {
 	}
 	if n != 1 {
 		return errors.New("could not write ping")
+	}
+	return nil
+}
+
+func (t *XMPPTransport) SetDeadline(deadline time.Time) error {
+	t.deadline = deadline
+	if t.conn != nil {
+		return t.conn.SetDeadline(deadline)
 	}
 	return nil
 }

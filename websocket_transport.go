@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"gosrc.io/xmpp/stanza"
@@ -22,11 +24,13 @@ var ServerDoesNotSupportXmppOverWebsocket = errors.New("the websocket server doe
 
 // The decoder is expected to be initialized after connecting to a server.
 type WebsocketTransport struct {
-	Config  TransportConfiguration
-	decoder *xml.Decoder
-	wsConn  *websocket.Conn
-	queue   chan []byte
-	logFile io.Writer
+	Config     TransportConfiguration
+	decoder    *xml.Decoder
+	wsConn     *websocket.Conn
+	queue      chan []byte
+	logFile    io.Writer
+	deadlineMu sync.RWMutex
+	deadline   time.Time
 
 	closeCtx  context.Context
 	closeFunc context.CancelFunc
@@ -129,6 +133,13 @@ func (t *WebsocketTransport) GetDecoder() *xml.Decoder {
 	return t.decoder
 }
 
+func (t *WebsocketTransport) SetDeadline(deadline time.Time) error {
+	t.deadlineMu.Lock()
+	t.deadline = deadline
+	t.deadlineMu.Unlock()
+	return nil
+}
+
 func (t WebsocketTransport) IsSecure() bool {
 	return strings.HasPrefix(t.Config.Address, "wss:")
 }
@@ -140,6 +151,27 @@ func (t WebsocketTransport) Ping() error {
 }
 
 func (t *WebsocketTransport) Read(p []byte) (int, error) {
+	t.deadlineMu.RLock()
+	deadline := t.deadline
+	t.deadlineMu.RUnlock()
+	if deadline.IsZero() {
+		select {
+		case <-t.closeCtx.Done():
+			return 0, t.closeCtx.Err()
+		case data := <-t.queue:
+			if t.logFile != nil && len(data) > 0 {
+				_, _ = fmt.Fprintf(t.logFile, "RECV:\n%s\n\n", data)
+			}
+			copy(p, data)
+			return len(data), nil
+		}
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return 0, os.ErrDeadlineExceeded
+	}
+	timer := time.NewTimer(remaining)
+	defer timer.Stop()
 	select {
 	case <-t.closeCtx.Done():
 		return 0, t.closeCtx.Err()
@@ -149,6 +181,8 @@ func (t *WebsocketTransport) Read(p []byte) (int, error) {
 		}
 		copy(p, data)
 		return len(data), nil
+	case <-timer.C:
+		return 0, os.ErrDeadlineExceeded
 	}
 }
 
