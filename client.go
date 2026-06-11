@@ -263,13 +263,33 @@ func newClientTransportForAddress(config TransportConfiguration, address string,
 }
 
 func (c *Client) connectionAddresses() []string {
-	if len(c.srvAddresses) > 0 {
-		return c.srvAddresses
+	addresses := c.srvAddresses
+	if len(addresses) == 0 {
+		if c.config != nil && c.config.Address != "" {
+			addresses = []string{c.config.Address}
+		}
 	}
-	if c.config != nil && c.config.Address != "" {
-		return []string{c.config.Address}
+	preferred := ""
+	if c.Session != nil {
+		preferred = c.Session.SMState.preferredReconAddr
 	}
-	return nil
+	return prioritizeAddress(preferred, addresses)
+}
+
+func prioritizeAddress(preferred string, addresses []string) []string {
+	if preferred == "" {
+		return addresses
+	}
+
+	out := make([]string, 0, len(addresses)+1)
+	out = append(out, preferred)
+	for _, address := range addresses {
+		if address == preferred {
+			continue
+		}
+		out = append(out, address)
+	}
+	return out
 }
 
 func (c *Client) startRuntime() {
@@ -600,6 +620,9 @@ func (c *Client) recv(keepaliveQuit chan<- struct{}) {
 		switch packet := val.(type) {
 		case stanza.StreamError:
 			c.router.route(c, val)
+			if packet.Error.Local == "see-other-host" && packet.SeeOtherHost != "" && c.Session != nil {
+				c.Session.SMState.preferredReconAddr = packet.SeeOtherHost
+			}
 			c.streamError(packet.Error.Local, packet.Text)
 			c.ErrorHandler(errors.New("stream error: " + packet.Error.Local))
 			// We don't return here, because we want to wait for the stream close tag from the server, or timeout.

@@ -174,13 +174,49 @@ type p1Ack struct {
 // StreamError Packet
 
 type StreamError struct {
-	XMLName xml.Name `xml:"http://etherx.jabber.org/streams error"`
-	Error   xml.Name `xml:",any"`
-	Text    string   `xml:"urn:ietf:params:xml:ns:xmpp-streams text"`
+	XMLName      xml.Name `xml:"http://etherx.jabber.org/streams error"`
+	Error        xml.Name `xml:",any"`
+	SeeOtherHost string   `xml:"urn:ietf:params:xml:ns:xmpp-stanzas see-other-host"`
+	Text         string   `xml:"urn:ietf:params:xml:ns:xmpp-streams text"`
 }
 
 func (StreamError) Name() string {
 	return "stream:error"
+}
+
+func (e *StreamError) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	*e = StreamError{XMLName: start.Name}
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return err
+		}
+
+		switch tt := tok.(type) {
+		case xml.StartElement:
+			if e.Error.Local == "" {
+				e.Error = tt.Name
+			}
+			switch tt.Name.Local {
+			case "text":
+				if err := d.DecodeElement(&e.Text, &tt); err != nil {
+					return err
+				}
+			case "see-other-host":
+				if err := d.DecodeElement(&e.SeeOtherHost, &tt); err != nil {
+					return err
+				}
+			default:
+				if err := d.Skip(); err != nil {
+					return err
+				}
+			}
+		case xml.EndElement:
+			if tt.Name == start.Name {
+				return nil
+			}
+		}
+	}
 }
 
 type streamErrorDecoder struct{}
