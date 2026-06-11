@@ -77,6 +77,12 @@ func (r *Router) route(s Sender, p stanza.Packet) {
 
 	// If there is no match and we receive an iq set or get, we need to send a reply
 	if isIq && (iq.Type == stanza.IQTypeGet || iq.Type == stanza.IQTypeSet) {
+		if iq.Type == stanza.IQTypeGet {
+			if _, ok := iq.Payload.(*stanza.Ping); ok {
+				_ = s.Send(iq.MakeResult())
+				return
+			}
+		}
 		iqNotImplemented(s, iq)
 	}
 }

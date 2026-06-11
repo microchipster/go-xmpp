@@ -128,6 +128,32 @@ func TestIQNSMatcher(t *testing.T) {
 	}
 }
 
+func TestPingAutoReply(t *testing.T) {
+	router := NewRouter()
+	conn := NewSenderMock()
+	iq, err := stanza.NewIQ(stanza.Attrs{Type: stanza.IQTypeGet, From: "service.localhost", To: "test@localhost", Id: "ping-1"})
+	if err != nil {
+		t.Fatalf("failed to create ping iq: %v", err)
+	}
+	iq.Payload = &stanza.Ping{}
+
+	router.route(conn, iq)
+
+	var got stanza.IQ
+	if err := xml.Unmarshal([]byte(conn.String()), &got); err != nil {
+		t.Fatalf("failed to unmarshal ping response: %v", err)
+	}
+	if got.Type != stanza.IQTypeResult {
+		t.Fatalf("unexpected reply type: %s", got.Type)
+	}
+	if got.From != "test@localhost" || got.To != "service.localhost" {
+		t.Fatalf("unexpected reply addresses: from=%q to=%q", got.From, got.To)
+	}
+	if got.Error != nil || got.Payload != nil || got.Any != nil {
+		t.Fatalf("ping reply should be empty result: %#v", got)
+	}
+}
+
 func TestTypeMatcher(t *testing.T) {
 	router := NewRouter()
 	router.NewRoute().
