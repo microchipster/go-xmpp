@@ -63,7 +63,7 @@ func TestMAMResultMessageExtension(t *testing.T) {
 	if res.Forwarded == nil || res.Forwarded.Delay == nil || res.Forwarded.Delay.Stamp != "2026-06-11T01:23:45Z" {
 		t.Fatalf("unexpected forwarded delay: %#v", res.Forwarded)
 	}
-	if res.Forwarded.Message == nil || res.Forwarded.Message.Body != "Hello" {
+	if res.Forwarded.Message == nil || StringValue(res.Forwarded.Message.Body) != "Hello" {
 		t.Fatalf("unexpected forwarded message: %#v", res.Forwarded.Message)
 	}
 }

@@ -13,8 +13,8 @@ type Message struct {
 	XMLName xml.Name `xml:"message"`
 	Attrs
 
-	Subject    string         `xml:"subject,omitempty"`
-	Body       string         `xml:"body,omitempty"`
+	Subject    *string        `xml:"subject,omitempty"`
+	Body       *string        `xml:"body,omitempty"`
 	Thread     string         `xml:"thread,omitempty"`
 	Error      Err            `xml:"error,omitempty"`
 	Extensions []MsgExtension `xml:",omitempty"`
@@ -31,6 +31,19 @@ func NewMessage(a Attrs) Message {
 	}
 }
 
+// StringPtr returns a pointer to the provided string.
+func StringPtr(v string) *string {
+	return &v
+}
+
+// StringValue returns the pointed string or an empty string when nil.
+func StringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 // Get search and extracts a specific extension on a message.
 // It receives a pointer to an MsgExtension. It will panic if the caller
 // does not pass a pointer.
@@ -39,10 +52,11 @@ func NewMessage(a Attrs) Message {
 // It will return false if the extension is not found on the message.
 //
 // Example usage:
-//   var oob xmpp.OOB
-//   if ok := msg.Get(&oob); ok {
-//     // oob extension has been found
-//	 }
+//
+//	  var oob xmpp.OOB
+//	  if ok := msg.Get(&oob); ok {
+//	    // oob extension has been found
+//		 }
 func (msg *Message) Get(ext MsgExtension) bool {
 	target := reflect.ValueOf(ext)
 	if target.Kind() != reflect.Ptr {
@@ -83,7 +97,7 @@ func (msg *Message) XMPPFormat() string {
 
 // UnmarshalXML implements custom parsing for messages
 func (msg *Message) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	msg.XMLName = start.Name
+	*msg = Message{XMLName: start.Name}
 
 	// Extract packet attributes
 	for _, attr := range start.Attr {
@@ -126,11 +140,19 @@ func (msg *Message) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 				var err error
 				switch tt.Name.Local {
 				case "body":
-					err = d.DecodeElement(&msg.Body, &tt)
+					var body string
+					err = d.DecodeElement(&body, &tt)
+					if err == nil {
+						msg.Body = &body
+					}
 				case "thread":
 					err = d.DecodeElement(&msg.Thread, &tt)
 				case "subject":
-					err = d.DecodeElement(&msg.Subject, &tt)
+					var subject string
+					err = d.DecodeElement(&subject, &tt)
+					if err == nil {
+						msg.Subject = &subject
+					}
 				case "error":
 					err = d.DecodeElement(&msg.Error, &tt)
 				}

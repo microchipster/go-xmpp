@@ -10,7 +10,7 @@ import (
 func TestHTMLGen(t *testing.T) {
 	htmlBody := "<p>Hello <b>World</b></p>"
 	msg := stanza.NewMessage(stanza.Attrs{To: "test@localhost"})
-	msg.Body = "Hello World"
+	msg.Body = stanza.StringPtr("Hello World")
 	body := stanza.HTMLBody{
 		InnerXML: htmlBody,
 	}
@@ -29,8 +29,8 @@ func TestHTMLGen(t *testing.T) {
 		return
 	}
 
-	if parsedMessage.Body != msg.Body {
-		t.Errorf("incorrect parsed body: '%s'", parsedMessage.Body)
+	if stanza.StringValue(parsedMessage.Body) != stanza.StringValue(msg.Body) {
+		t.Errorf("incorrect parsed body: '%s'", stanza.StringValue(parsedMessage.Body))
 	}
 
 	var h stanza.HTML

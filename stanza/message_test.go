@@ -10,8 +10,8 @@ import (
 
 func TestGenerateMessage(t *testing.T) {
 	message := stanza.NewMessage(stanza.Attrs{Type: stanza.MessageTypeChat, From: "admin@localhost", To: "test@localhost", Id: "1"})
-	message.Body = "Hi"
-	message.Subject = "Msg Subject"
+	message.Body = stanza.StringPtr("Hi")
+	message.Subject = stanza.StringPtr("Msg Subject")
 
 	data, err := xml.Marshal(message)
 	if err != nil {
@@ -25,6 +25,35 @@ func TestGenerateMessage(t *testing.T) {
 
 	if !xmlEqual(parsedMessage, message) {
 		t.Errorf("non matching items\n%s", cmp.Diff(parsedMessage, message))
+	}
+}
+
+func TestUnmarshalDistinguishesMissingAndEmptyBodyAndSubject(t *testing.T) {
+	const messageXML = `<message><body/><subject/></message>`
+
+	var parsedMessage stanza.Message
+	if err := xml.Unmarshal([]byte(messageXML), &parsedMessage); err != nil {
+		t.Fatalf("failed to unmarshal empty message fields: %v", err)
+	}
+	if parsedMessage.Body == nil {
+		t.Fatal("expected empty body element to be preserved")
+	}
+	if parsedMessage.Subject == nil {
+		t.Fatal("expected empty subject element to be preserved")
+	}
+	if *parsedMessage.Body != "" || *parsedMessage.Subject != "" {
+		t.Fatalf("expected empty body and subject values, got body=%q subject=%q", *parsedMessage.Body, *parsedMessage.Subject)
+	}
+
+	var missingMessage stanza.Message
+	if err := xml.Unmarshal([]byte(`<message></message>`), &missingMessage); err != nil {
+		t.Fatalf("failed to unmarshal message without body and subject: %v", err)
+	}
+	if missingMessage.Body != nil {
+		t.Fatalf("expected missing body to stay nil, got %q", *missingMessage.Body)
+	}
+	if missingMessage.Subject != nil {
+		t.Fatalf("expected missing subject to stay nil, got %q", *missingMessage.Subject)
 	}
 }
 

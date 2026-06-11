@@ -21,8 +21,8 @@ func TestDecodeRequest(t *testing.T) {
 		return
 	}
 
-	if parsedMessage.Body != "My lord, dispatch; read o'er these articles." {
-		t.Errorf("Unexpected body: '%s'", parsedMessage.Body)
+	if stanza.StringValue(parsedMessage.Body) != "My lord, dispatch; read o'er these articles." {
+		t.Errorf("Unexpected body: '%s'", stanza.StringValue(parsedMessage.Body))
 	}
 
 	if len(parsedMessage.Extensions) < 1 {

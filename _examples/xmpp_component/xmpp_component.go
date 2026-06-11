@@ -56,7 +56,7 @@ func handleMessage(_ xmpp.Sender, p stanza.Packet) {
 	if !ok {
 		return
 	}
-	fmt.Println("Received message:", msg.Body)
+	fmt.Println("Received message:", stanza.StringValue(msg.Body))
 }
 
 func discoInfo(c xmpp.Sender, p stanza.Packet, opts xmpp.ComponentOptions) {

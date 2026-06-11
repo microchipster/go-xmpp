@@ -26,4 +26,9 @@ Additionally, empty vs non-present `<body/>` is relevant for XEP-0045:
 
 > Note: In accordance with the core definition of XML stanzas, any message can contain a `<subject/>` element; only a message that contains a `<subject/>` but no `<body/>` element shall be considered a subject change for MUC purposes.
 
+---
+**Addressed note**
 
+`stanza.Message` now keeps `Subject` and `Body` as pointer-backed fields, and the custom XML unmarshal path preserves empty-but-present `<subject/>` and `<body/>` elements while leaving absent ones nil. Regression tests cover both the empty and missing cases.
+
+---

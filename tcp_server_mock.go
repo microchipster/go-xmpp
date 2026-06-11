@@ -172,7 +172,7 @@ func discardPresence(t *testing.T, sc *ServerConn) {
 	defer sc.connection.SetDeadline(time.Time{})
 	var presenceStz stanza.Presence
 
-	recvBuf := make([]byte, len(InitialPresence))
+	recvBuf := make([]byte, len(DefaultInitialPresence))
 	_, err = sc.connection.Read(recvBuf[:]) // recv data
 
 	if err != nil {

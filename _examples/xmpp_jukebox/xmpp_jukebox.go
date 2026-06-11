@@ -1,5 +1,6 @@
 // Can be launched with:
-//   ./xmpp_jukebox -jid=test@localhost/jukebox -password=test -address=localhost:5222
+//
+//	./xmpp_jukebox -jid=test@localhost/jukebox -password=test -address=localhost:5222
 package main
 
 import (
@@ -71,7 +72,7 @@ func handleMessage(s xmpp.Sender, p stanza.Packet, player *mpg123.Player) {
 	if !ok {
 		return
 	}
-	command := strings.Trim(msg.Body, " ")
+	command := strings.Trim(stanza.StringValue(msg.Body), " ")
 	if command == "stop" {
 		player.Stop()
 	} else {

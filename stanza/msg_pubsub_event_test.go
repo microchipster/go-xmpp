@@ -38,8 +38,8 @@ func TestDecodeMsgEvent(t *testing.T) {
 		return
 	}
 
-	if parsedMessage.Body != "" {
-		t.Errorf("Unexpected body: '%s'", parsedMessage.Body)
+	if stanza.StringValue(parsedMessage.Body) != "" {
+		t.Errorf("Unexpected body: '%s'", stanza.StringValue(parsedMessage.Body))
 	}
 
 	if len(parsedMessage.Extensions) < 1 {
@@ -74,7 +74,7 @@ func TestDecodeMsgEvent(t *testing.T) {
 }
 
 func TestEncodeEvent(t *testing.T) {
-	expected := "<message><event xmlns=\"http://jabber.org/protocol/pubsub#event\">" +
+	expected := "<message><body>Hello World</body><event xmlns=\"http://jabber.org/protocol/pubsub#event\">" +
 		"<items node=\"princely_musings\"><item id=\"ae890ac52d0df67ed7cfdf51b644e901\">" +
 		"<entry xmlns=\"http://www.w3.org/2005/Atom\"><title>My pub item title</title>" +
 		"<summary>My pub item content summary</summary><link rel=\"alternate\" " +
@@ -82,6 +82,7 @@ func TestEncodeEvent(t *testing.T) {
 		"</link><id>My pub item content ID</id><published>2003-12-13T18:30:02Z</published>" +
 		"<updated>2003-12-13T18:30:02Z</updated></entry></item></items></event></message>"
 	message := stanza.Message{
+		Body: stanza.StringPtr("Hello World"),
 		Extensions: []stanza.MsgExtension{
 			stanza.PubSubEvent{
 				EventElement: stanza.ItemsEvent{
