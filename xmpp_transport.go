@@ -72,6 +72,9 @@ func (t *XMPPTransport) GetDomain() string {
 }
 
 func (t *XMPPTransport) GetDecoder() *xml.Decoder {
+	if t.decoder == nil {
+		t.decoder = newEmptyDecoder()
+	}
 	return t.decoder
 }
 
