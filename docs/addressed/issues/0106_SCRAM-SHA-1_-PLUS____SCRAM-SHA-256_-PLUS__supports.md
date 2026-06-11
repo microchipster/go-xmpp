@@ -47,3 +47,8 @@ it works for you.
 > I add SCRAM-SHA-512(-PLUS): https://xmpp.org/extensions/inbox/hash-recommendations.html
 
 Note that SCRAM-SHA-512 is not an actual SCRAM mechanism defined by the IETF. Making one up will at best lead to interop problems, and at worst could cause security issues (this isn't likely if you're just changing the hash in the HMAC, but still, don't make up security mechanisms just to have a bigger number in a hash somewhere).
+
+---
+**Addressed note**
+
+The current implementation already advertises and selects the SCRAM mechanisms needed here, including SHA-1, SHA-256, SHA-512, and their `-PLUS` variants, with tests covering mechanism selection and downgrade-preference ordering.

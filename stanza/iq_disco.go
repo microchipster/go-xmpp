@@ -63,6 +63,16 @@ func (d *DiscoInfo) AddFeatures(namespace ...string) {
 	}
 }
 
+// HasFeature reports whether the disco info advertises the given feature namespace.
+func (d *DiscoInfo) HasFeature(namespace string) bool {
+	for _, feature := range d.Features {
+		if feature.Var == namespace {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *DiscoInfo) SetNode(node string) *DiscoInfo {
 	d.Node = node
 	return d
