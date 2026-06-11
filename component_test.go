@@ -510,7 +510,7 @@ func handlerComponentFailedHandshakeDefaultID(t *testing.T, sc *ServerConn) {
 	// Send a message, instead of a "<handshake/>" tag, to fail the handshake process dans disconnect the client.
 	me := stanza.Message{
 		Attrs: stanza.Attrs{Type: stanza.MessageTypeChat, From: defaultServerName, To: defaultComponentName, Lang: "en"},
-		Body:  "Fail my handshake.",
+		Body:  stanza.StringPtr("Fail my handshake."),
 	}
 	s, _ := xml.Marshal(me)
 	_, err := sc.connection.Write(s)

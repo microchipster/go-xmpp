@@ -69,6 +69,68 @@ func TestClient_Connect(t *testing.T) {
 	mock.Stop()
 }
 
+func TestClient_InitialPresenceConfiguration(t *testing.T) {
+	serverDone := make(chan struct{})
+	mock := ServerMock{}
+	mock.Start(t, testXMPPAddress, func(t *testing.T, sc *ServerConn) {
+		checkClientOpenStream(t, sc)
+		sendStreamFeatures(t, sc)
+		readAuth(t, sc.decoder)
+		sc.connection.Write([]byte("<success xmlns='urn:ietf:params:xml:ns:xmpp-sasl'/>"))
+
+		checkClientOpenStream(t, sc)
+		sendBindFeature(t, sc)
+		bind(t, sc)
+
+		pkt, err := stanza.NextPacket(sc.decoder)
+		if err != nil {
+			t.Errorf("failed to read initial presence: %v", err)
+			return
+		}
+		presence, ok := pkt.(stanza.Presence)
+		if !ok {
+			t.Errorf("expected initial presence stanza, got %T", pkt)
+			return
+		}
+		if presence.Show != stanza.PresenceShowAway {
+			t.Errorf("unexpected show value: %q", presence.Show)
+		}
+		if presence.Status != "Reading docs" {
+			t.Errorf("unexpected status value: %q", presence.Status)
+		}
+		if presence.Priority != 7 {
+			t.Errorf("unexpected priority value: %d", presence.Priority)
+		}
+		serverDone <- struct{}{}
+	})
+	defer mock.Stop()
+
+	config := Config{
+		TransportConfiguration: TransportConfiguration{
+			Address: testXMPPAddress,
+		},
+		Jid:             "test@localhost",
+		Credential:      Password("test"),
+		Insecure:        true,
+		InitialPresence: `<presence><show>away</show><status>Reading docs</status><priority>7</priority></presence>`,
+	}
+
+	client, err := NewClient(&config, NewRouter(), clientDefaultErrorHandler)
+	if err != nil {
+		t.Fatalf("cannot create XMPP client: %s", err)
+	}
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("XMPP connection failed: %s", err)
+	}
+
+	select {
+	case <-serverDone:
+	case <-time.After(defaultChannelTimeout):
+		t.Fatal("mock server did not receive configured initial presence")
+	}
+}
+
 func TestClient_NoInsecure(t *testing.T) {
 	// Setup Mock server
 	mock := ServerMock{}

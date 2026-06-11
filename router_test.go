@@ -66,7 +66,7 @@ func TestNameMatcher(t *testing.T) {
 	// Check that a message packet is properly matched
 	conn := NewSenderMock()
 	msg := stanza.NewMessage(stanza.Attrs{Type: stanza.MessageTypeChat, To: "test@localhost", Id: "1"})
-	msg.Body = "Hello"
+	msg.Body = stanza.StringPtr("Hello")
 	router.route(conn, msg)
 	if conn.String() != successFlag {
 		t.Error("Message was not matched and routed properly")
@@ -165,7 +165,7 @@ func TestTypeMatcher(t *testing.T) {
 	// Check that a packet with the proper type matches
 	conn := NewSenderMock()
 	message := stanza.NewMessage(stanza.Attrs{Type: "normal", To: "test@localhost", Id: "1"})
-	message.Body = "hello"
+	message.Body = stanza.StringPtr("hello")
 	router.route(conn, message)
 
 	if conn.String() != successFlag {
@@ -175,7 +175,7 @@ func TestTypeMatcher(t *testing.T) {
 	// We should match on default type 'normal' for message without a type
 	conn = NewSenderMock()
 	message = stanza.NewMessage(stanza.Attrs{To: "test@localhost", Id: "1"})
-	message.Body = "hello"
+	message.Body = stanza.StringPtr("hello")
 	router.route(conn, message)
 
 	if conn.String() != successFlag {
@@ -241,7 +241,7 @@ func TestCompositeMatcher(t *testing.T) {
 		}}
 
 	message := stanza.NewMessage(stanza.Attrs{Type: "normal", To: "test@localhost", Id: "1"})
-	message.Body = "hello"
+	message.Body = stanza.StringPtr("hello")
 
 	tests := []struct {
 		name  string
@@ -280,7 +280,7 @@ func TestCatchallMatcher(t *testing.T) {
 	// Check that we match on several packets
 	conn := NewSenderMock()
 	message := stanza.NewMessage(stanza.Attrs{Type: "chat", To: "test@localhost", Id: "1"})
-	message.Body = "hello"
+	message.Body = stanza.StringPtr("hello")
 	router.route(conn, message)
 
 	if conn.String() != successFlag {
@@ -348,7 +348,7 @@ func (s SenderMock) String() string {
 func TestSenderMock(t *testing.T) {
 	conn := NewSenderMock()
 	msg := stanza.NewMessage(stanza.Attrs{To: "test@localhost", Id: "1"})
-	msg.Body = "Hello"
+	msg.Body = stanza.StringPtr("Hello")
 	if err := conn.Send(msg); err != nil {
 		t.Error("Could not send message")
 	}

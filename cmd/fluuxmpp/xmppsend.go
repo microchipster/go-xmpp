@@ -10,7 +10,7 @@ import (
 func send(c xmpp.Sender, recipient []string, msgText string) {
 	msg := stanza.Message{
 		Attrs: stanza.Attrs{Type: stanza.MessageTypeChat},
-		Body:  msgText,
+		Body:  stanza.StringPtr(msgText),
 	}
 
 	if isMUCRecipient {
