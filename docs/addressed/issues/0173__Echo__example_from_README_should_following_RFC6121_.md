@@ -12,3 +12,9 @@ I would suggest to PR the example for update README and example library. Adding 
 
 Reference : https://xmpp.org/rfcs/rfc6121.html#message-syntax
 
+---
+**Addressed note**
+
+The README echo example and `_examples/xmpp_echo/xmpp_echo.go` now send replies with `Type: stanza.MessageTypeChat`, which matches RFC6121 message semantics and restores delivery to regular chat clients.
+
+---

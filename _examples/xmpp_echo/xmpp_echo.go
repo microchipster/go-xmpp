@@ -47,7 +47,7 @@ func handleMessage(s xmpp.Sender, p stanza.Packet) {
 	}
 
 	_, _ = fmt.Fprintf(os.Stdout, "Body = %s - from = %s\n", stanza.StringValue(msg.Body), msg.From)
-	reply := stanza.Message{Attrs: stanza.Attrs{To: msg.From}, Body: stanza.StringPtr(stanza.StringValue(msg.Body))}
+	reply := stanza.Message{Attrs: stanza.Attrs{To: msg.From, Type: stanza.MessageTypeChat}, Body: stanza.StringPtr(stanza.StringValue(msg.Body))}
 	_ = s.Send(reply)
 }
 
