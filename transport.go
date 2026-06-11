@@ -23,6 +23,7 @@ type TransportConfiguration struct {
 	// the form 'serverhost:port' i.e "localhost:8888"
 	Address        string
 	Domain         string
+	Lang           string
 	ConnectTimeout int // Client timeout in seconds. Default to 15
 	// tls.Config must not be modified after having been passed to NewClient. Any
 	// changes made after connecting are ignored.
@@ -67,9 +68,9 @@ func NewClientTransport(config TransportConfiguration) Transport {
 
 	config.Address = ensurePort(config.Address, 5222)
 	return &XMPPTransport{
-		Config:        config,
-		openStatement: clientStreamOpen,
-		decoder:       newEmptyDecoder(),
+		Config:     config,
+		decoder:    newEmptyDecoder(),
+		openStream: clientStreamOpen,
 	}
 }
 
@@ -83,8 +84,8 @@ func NewComponentTransport(config TransportConfiguration) (Transport, error) {
 
 	config.Address = ensurePort(config.Address, 5222)
 	return &XMPPTransport{
-		Config:        config,
-		openStatement: componentStreamOpen,
-		decoder:       newEmptyDecoder(),
+		Config:     config,
+		decoder:    newEmptyDecoder(),
+		openStream: componentStreamOpen,
 	}, nil
 }

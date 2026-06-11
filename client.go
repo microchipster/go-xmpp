@@ -202,6 +202,9 @@ func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, 
 		// Fallback to jid domain
 		config.Domain = config.parsedJid.Domain
 	}
+	if config.Lang != "" {
+		config.TransportConfiguration.Lang = config.Lang
+	}
 
 	c = new(Client)
 	c.config = config
