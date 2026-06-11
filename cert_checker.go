@@ -68,7 +68,7 @@ func (c *ServerCheck) checkStartTLS() error {
 	decoder := xml.NewDecoder(tcpconn)
 
 	// Send stream open tag
-	if _, err = fmt.Fprintf(tcpconn, clientStreamOpen, c.domain); err != nil {
+	if _, err = fmt.Fprintf(tcpconn, "%s", clientStreamOpen(c.domain, "")); err != nil {
 		return err
 	}
 

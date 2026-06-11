@@ -18,22 +18,18 @@ import (
 // XMPPTransport implements the XMPP native TCP transport
 // The decoder is expected to be initialized after connecting to a server.
 type XMPPTransport struct {
-	openStatement string
-	Config        TransportConfiguration
-	TLSConfig     *tls.Config
-	deadline      time.Time
-	decoder       *xml.Decoder
-	conn          net.Conn
-	readWriter    io.ReadWriter
-	logFile       io.Writer
-	isSecure      bool
+	Config     TransportConfiguration
+	TLSConfig  *tls.Config
+	deadline   time.Time
+	decoder    *xml.Decoder
+	conn       net.Conn
+	readWriter io.ReadWriter
+	logFile    io.Writer
+	isSecure   bool
+	openStream func(domain, lang string) string
 	// Used to close TCP connection when a stream close message is received from the server
 	closeChan chan stanza.StreamClosePacket
 }
-
-var componentStreamOpen = fmt.Sprintf("<?xml version='1.0'?><stream:stream to='%%s' xmlns='%s' xmlns:stream='%s'>", stanza.NSComponent, stanza.NSStream)
-
-var clientStreamOpen = fmt.Sprintf("<?xml version='1.0'?><stream:stream to='%%s' xmlns='%s' xmlns:stream='%s' version='1.0'>", stanza.NSClient, stanza.NSStream)
 
 func (t *XMPPTransport) Connect() (string, error) {
 	var err error
@@ -56,7 +52,7 @@ func (t *XMPPTransport) Connect() (string, error) {
 }
 
 func (t *XMPPTransport) StartStream() (string, error) {
-	streamOpen := fmt.Sprintf(t.openStatement, t.Config.Domain)
+	streamOpen := t.openStream(t.Config.Domain, t.Config.Lang)
 	if _, err := t.Write([]byte(streamOpen)); err != nil {
 		t.Close()
 		return "", NewConnError(fmt.Errorf("write stream open: %w", err), true)

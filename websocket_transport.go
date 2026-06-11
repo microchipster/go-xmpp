@@ -71,7 +71,7 @@ func (t *WebsocketTransport) Connect() (string, error) {
 }
 
 func (t WebsocketTransport) StartStream() (string, error) {
-	if _, err := fmt.Fprintf(t, `<open xmlns="urn:ietf:params:xml:ns:xmpp-framing" to="%s" version="1.0" />`, t.Config.Domain); err != nil {
+	if _, err := fmt.Fprintf(t, "%s", websocketStreamOpen(t.Config.Domain, t.Config.Lang)); err != nil {
 		t.cleanup(websocket.StatusBadGateway)
 		return "", NewConnError(err, true)
 	}
