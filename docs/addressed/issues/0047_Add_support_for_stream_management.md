@@ -23,3 +23,8 @@ Okay we have a big problem -> Component does not work:
 ---
 **mremond** at 2019-09-05T19:51:30Z
 Ok, I will have a look tomorrow. Thanks !
+
+---
+**Addressed note**
+
+This is already implemented in-tree. The client/session/router paths support XEP-0198 stream management with outbound stanza tracking, SM enable/resume, and replay of unacked stanzas after acknowledgements or reconnect.
