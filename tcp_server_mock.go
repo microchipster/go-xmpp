@@ -37,6 +37,8 @@ const (
 	testClientIqPort
 	testClientIqFailPort
 	testClientPostConnectHook
+	testClientSrvFallbackDead
+	testClientSrvFallbackSuccess
 
 	// Client internal tests
 	testClientStreamManagement

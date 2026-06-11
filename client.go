@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -127,6 +130,7 @@ func (em *EventManager) streamError(error, desc string) {
 // ============================================================================
 
 var ErrCanOnlySendGetOrSetIq = errors.New("SendIQ can only send get and set IQ stanzas")
+var lookupSRV = net.LookupSRV
 
 // Client is the main structure used to connect as a client on an XMPP
 // server.
@@ -138,6 +142,8 @@ type Client struct {
 	transport Transport
 	// Router is used to dispatch packets
 	router *Router
+	// Connection addresses are ordered by preference and used for SRV fallback.
+	srvAddresses []string
 	// Track discovered server capabilities for the current connection.
 	serverCapabilitiesMu sync.RWMutex
 	serverCapabilities   map[string]*stanza.DiscoInfo
@@ -161,6 +167,8 @@ Setting up the client / Checking the parameters
 // If host is not specified, the DNS SRV should be used to find the host from the domain part of the Jid.
 // Default the port to 5222.
 func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, err error) {
+	var candidateAddresses []string
+
 	if config.KeepaliveInterval == 0 {
 		config.KeepaliveInterval = time.Second * 30
 	}
@@ -180,18 +188,15 @@ func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, 
 		config.Address = config.parsedJid.Domain
 
 		// Fetch SRV DNS-Entries
-		_, srvEntries, err := net.LookupSRV("xmpp-client", "tcp", config.parsedJid.Domain)
-
-		if err == nil && len(srvEntries) > 0 {
-			// If we found matching DNS records, use the entry with highest weight
-			bestSrv := srvEntries[0]
-			for _, srv := range srvEntries {
-				if srv.Priority <= bestSrv.Priority && srv.Weight >= bestSrv.Weight {
-					bestSrv = srv
-					config.Address = ensurePort(srv.Target, int(srv.Port))
-				}
-			}
+		if srvAddresses := resolveSRVAddresses(config.parsedJid.Domain); len(srvAddresses) > 0 {
+			config.Address = srvAddresses[0]
+			candidateAddresses = srvAddresses
 		}
+	} else {
+		candidateAddresses = []string{config.Address}
+	}
+	if len(candidateAddresses) == 0 {
+		candidateAddresses = []string{config.Address}
 	}
 	if config.Domain == "" {
 		// Fallback to jid domain
@@ -211,14 +216,60 @@ func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, 
 		config.TransportConfiguration.Domain = config.parsedJid.Domain
 	}
 	c.config.TransportConfiguration.ConnectTimeout = c.config.ConnectTimeout
-	c.transport = NewClientTransport(c.config.TransportConfiguration)
+	c.srvAddresses = candidateAddresses
+	c.transport = newClientTransportForAddress(c.config.TransportConfiguration, candidateAddresses[0], c.config.StreamLogger)
 	c.serverCapabilities = make(map[string]*stanza.DiscoInfo)
 
-	if config.StreamLogger != nil {
-		c.transport.LogTraffic(config.StreamLogger)
+	return
+}
+
+func resolveSRVAddresses(domain string) []string {
+	_, srvEntries, err := lookupSRV("xmpp-client", "tcp", domain)
+	if err != nil || len(srvEntries) == 0 {
+		return nil
 	}
 
-	return
+	sort.SliceStable(srvEntries, func(i, j int) bool {
+		if srvEntries[i].Priority != srvEntries[j].Priority {
+			return srvEntries[i].Priority < srvEntries[j].Priority
+		}
+		if srvEntries[i].Weight != srvEntries[j].Weight {
+			return srvEntries[i].Weight > srvEntries[j].Weight
+		}
+		return srvEntries[i].Target < srvEntries[j].Target
+	})
+
+	addresses := make([]string, 0, len(srvEntries))
+	seen := make(map[string]struct{}, len(srvEntries))
+	for _, srv := range srvEntries {
+		address := ensurePort(srv.Target, int(srv.Port))
+		if _, ok := seen[address]; ok {
+			continue
+		}
+		seen[address] = struct{}{}
+		addresses = append(addresses, address)
+	}
+
+	return addresses
+}
+
+func newClientTransportForAddress(config TransportConfiguration, address string, logFile *os.File) Transport {
+	config.Address = address
+	transport := NewClientTransport(config)
+	if logFile != nil {
+		transport.LogTraffic(logFile)
+	}
+	return transport
+}
+
+func (c *Client) connectionAddresses() []string {
+	if len(c.srvAddresses) > 0 {
+		return c.srvAddresses
+	}
+	if c.config != nil && c.config.Address != "" {
+		return []string{c.config.Address}
+	}
+	return nil
 }
 
 func (c *Client) startRuntime() {
@@ -264,41 +315,55 @@ func (c *Client) Connect() error {
 
 // connect establishes an actual TCP connection, based on previously defined parameters, as well as a XMPP session
 func (c *Client) connect() error {
-	var state SMState
-	var err error
-	// This is the TCP connection
-	streamId, err := c.transport.Connect()
-	if err != nil {
-		return err
+	addresses := c.connectionAddresses()
+	if len(addresses) == 0 {
+		return errors.New("client has no connection addresses")
 	}
 
-	// Client is ok, we now open XMPP session with TLS negotiation if possible and session resume or binding
-	// depending on state.
-	if c.Session, err = NewSession(c, state); err != nil {
-		// Try to get the stream close tag from the server.
-		go func() {
-			for {
-				val, err := stanza.NextPacket(c.transport.GetDecoder())
-				if err != nil {
-					c.ErrorHandler(err)
-					c.disconnected(state)
-					return
-				}
-				switch val.(type) {
-				case stanza.StreamClosePacket:
-					// TCP messages should arrive in order, so we can expect to get nothing more after this occurs
-					c.transport.ReceivedStreamClose()
-					return
-				}
-			}
-		}()
-		c.Disconnect()
-		return err
-	}
-	c.Session.StreamId = streamId
-	c.updateState(StateSessionEstablished)
+	originalSession := c.Session
+	var previousTransport Transport
+	var lastErr error
+	for idx, address := range addresses {
+		if idx > 0 && previousTransport != nil {
+			oldTransport := previousTransport
+			go oldTransport.Close()
+		}
 
-	return err
+		c.config.TransportConfiguration.Address = address
+		c.config.Address = address
+		c.transport = newClientTransportForAddress(c.config.TransportConfiguration, address, c.config.StreamLogger)
+		previousTransport = c.transport
+		if originalSession != nil {
+			sessionCopy := *originalSession
+			sessionCopy.err = nil
+			sessionCopy.transport = c.transport
+			c.Session = &sessionCopy
+		} else {
+			c.Session = nil
+		}
+
+		streamId, err := c.transport.Connect()
+		if err != nil {
+			lastErr = fmt.Errorf("connect to %s: %w", address, err)
+			continue
+		}
+
+		var state SMState
+		if c.Session, err = NewSession(c, state); err != nil {
+			lastErr = fmt.Errorf("session setup on %s: %w", address, err)
+			failedTransport := c.transport
+			go failedTransport.Close()
+			c.Session = nil
+			continue
+		}
+		c.Session.StreamId = streamId
+		c.updateState(StateSessionEstablished)
+
+		return nil
+	}
+
+	c.Session = originalSession
+	return lastErr
 }
 
 // Resume attempts resuming  a Stream Managed session, based on the provided stream management
