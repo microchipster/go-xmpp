@@ -14,6 +14,11 @@ I am missing the ability to hook into the stream manager and client lifecycle. C
 ## Comments
 
 ---
+**Addressed note**
+
+This was addressed in-tree by adding explicit `Client.PostConnectHook` and `Client.PostResumeHook` callbacks. `PostConnectHook` fires after a successful initial authentication and `PostResumeHook` fires after a successful stream-management reconnect, which covers the success and reconnect lifecycle events requested here. Authentication failures still surface through the normal connection error path so callers can handle retry or credential refresh logic there.
+
+---
 **wichert** at 2019-10-28T14:04:55Z
 I've been thinking a little bit about this. I don't think a channel is the right solution here, since it would block xmpp if nothing is listening on the channel. A callback/event approach like you currently have should be a better approach. If we can make this a bit more flexible to allow multiple subscribers and named event types. We can, for example, use https://github.com/kataras/go-events to allow something like this:
 
