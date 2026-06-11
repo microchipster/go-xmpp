@@ -11,5 +11,10 @@ We should also link that to stream management ack to keep outgoing message in th
 ## Comments
 
 ---
+**Addressed note**
+
+This is addressed in-tree by storing outbound stanzas in `Session.SMState.UnAckQueue` when stream management is enabled, and by replaying unacked stanzas from `SendMissingStz` after SM acknowledgements or stream resumption. `Send()` and `SendRaw()` both feed the queue, so outgoing messages are retained until the server acks them or the session is reconnected.
+
+---
 **remicorniere** at 2020-01-13T10:25:31Z
 Maybe see #127 first
