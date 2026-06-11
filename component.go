@@ -146,6 +146,9 @@ func (c *Component) recv() {
 		switch p := val.(type) {
 		case stanza.StreamError:
 			c.router.route(c, val)
+			if p.Error.Local == "see-other-host" && p.SeeOtherHost != "" {
+				c.ComponentOptions.TransportConfiguration.Address = p.SeeOtherHost
+			}
 			c.streamError(p.Error.Local, p.Text)
 			c.ErrorHandler(errors.New("stream error: " + p.Error.Local))
 			// We don't return here, because we want to wait for the stream close tag from the server, or timeout.

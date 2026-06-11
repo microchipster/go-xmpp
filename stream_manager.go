@@ -50,6 +50,10 @@ type StreamManager struct {
 	// Store low level metrics
 	Metrics *Metrics
 
+	// Suppress the next disconnect-triggered resume when a stream error already
+	// decided whether the connection should reconnect.
+	suppressDisconnectResume bool
+
 	wg sync.WaitGroup
 }
 
@@ -79,15 +83,15 @@ func (sm *StreamManager) Run() error {
 		case StateSessionEstablished:
 			sm.Metrics.setLoginTime()
 		case StateDisconnected:
+			if sm.suppressDisconnectResume {
+				sm.suppressDisconnectResume = false
+				return nil
+			}
 			// Reconnect on disconnection
 			return sm.resume()
 		case StateStreamError:
-			sm.client.Disconnect()
-			// Only try reconnecting if we have not been kicked by another session to avoid connection loop.
-			// TODO: Make this conflict exception a permanent error
-			if e.StreamError != "conflict" {
-				return sm.resume()
-			}
+			sm.suppressDisconnectResume = e.StreamError == "conflict"
+			return sm.client.Disconnect()
 		case StatePermanentError:
 			// Do not attempt to reconnect
 		}
