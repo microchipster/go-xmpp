@@ -101,6 +101,42 @@ func TestClient_NoInsecure(t *testing.T) {
 	mock.Stop()
 }
 
+func TestClient_SessionEstablishmentTimeout(t *testing.T) {
+	mock := ServerMock{}
+	mock.Start(t, testXMPPAddress, handlerClientSessionTimeout)
+	defer mock.Stop()
+
+	config := Config{
+		TransportConfiguration: TransportConfiguration{
+			Address: testXMPPAddress,
+		},
+		Jid:            "test@localhost",
+		Credential:     Password("test"),
+		Insecure:       true,
+		ConnectTimeout: 1,
+	}
+
+	var client *Client
+	var err error
+	router := NewRouter()
+	if client, err = NewClient(&config, router, clientDefaultErrorHandler); err != nil {
+		t.Fatalf("cannot create XMPP client: %s", err)
+	}
+
+	start := time.Now()
+	err = client.Connect()
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected session establishment to time out")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "timeout") {
+		t.Fatalf("expected timeout error, got %v", err)
+	}
+	if elapsed > 4*time.Second {
+		t.Fatalf("expected session establishment timeout to fail quickly, took %s", elapsed)
+	}
+}
+
 func TestClient_SRVFallback(t *testing.T) {
 	originalLookupSRV := lookupSRV
 	lookupSRV = func(service, proto, name string) (string, []*net.SRV, error) {
@@ -746,6 +782,12 @@ func closeConn(t *testing.T, sc *ServerConn) {
 func handlerAbortTLS(t *testing.T, sc *ServerConn) {
 	checkClientOpenStream(t, sc)
 	sendStreamFeatures(t, sc) // Send initial features
+}
+
+func handlerClientSessionTimeout(t *testing.T, sc *ServerConn) {
+	checkClientOpenStream(t, sc)
+	sendStreamFeatures(t, sc)
+	time.Sleep(3 * time.Second)
 }
 
 // Test connection with mandatory session (RFC-3921)

@@ -35,6 +35,43 @@ func TestHandshake(t *testing.T) {
 	}
 }
 
+func TestComponent_HandshakeTimeout(t *testing.T) {
+	mock := ServerMock{}
+	testComponentAddess := fmt.Sprintf("%s:%d", testComponentDomain, testHandshakePort)
+	mock.Start(t, testComponentAddess, handlerComponentHandshakeTimeout)
+	defer mock.Stop()
+
+	opts := ComponentOptions{
+		TransportConfiguration: TransportConfiguration{
+			Address:        testComponentAddess,
+			ConnectTimeout: 1,
+		},
+		Domain:   testComponentDomain,
+		Secret:   "mypass",
+		Name:     "Test Component",
+		Category: "gateway",
+		Type:     "service",
+	}
+	router := NewRouter()
+	c, err := NewComponent(opts, router, componentDefaultErrorHandler)
+	if err != nil {
+		t.Fatalf("failed to create component: %v", err)
+	}
+
+	start := time.Now()
+	err = c.Connect()
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected component handshake to time out")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "timeout") {
+		t.Fatalf("expected timeout error, got %v", err)
+	}
+	if elapsed > 4*time.Second {
+		t.Fatalf("expected session establishment timeout to fail quickly, took %s", elapsed)
+	}
+}
+
 // Tests connection process with a handshake exchange
 // Tests multiple session IDs. All serverConnections should generate a unique stream ID
 func TestGenerateHandshakeId(t *testing.T) {
@@ -509,4 +546,10 @@ func handlerForComponentHandshakeDefaultID(t *testing.T, sc *ServerConn) {
 	readHandshakeComponent(t, sc.decoder)
 	sc.connection.Write([]byte("<handshake/>")) // That's all the server needs to return (see xep-0114)
 	return
+}
+
+func handlerComponentHandshakeTimeout(t *testing.T, sc *ServerConn) {
+	checkOpenStreamHandshakeDefaultID(t, sc)
+	readHandshakeComponent(t, sc.decoder)
+	time.Sleep(3 * time.Second)
 }
