@@ -5,6 +5,9 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,6 +99,57 @@ func TestClient_NoInsecure(t *testing.T) {
 	}
 
 	mock.Stop()
+}
+
+func TestClient_SRVFallback(t *testing.T) {
+	originalLookupSRV := lookupSRV
+	lookupSRV = func(service, proto, name string) (string, []*net.SRV, error) {
+		if service != "xmpp-client" || proto != "tcp" || name != testClientDomain {
+			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+		}
+		return "", []*net.SRV{
+			{Target: "localhost", Port: testClientSrvFallbackDead, Priority: 10, Weight: 20},
+			{Target: "localhost", Port: testClientSrvFallbackSuccess, Priority: 10, Weight: 10},
+		}, nil
+	}
+	defer func() { lookupSRV = originalLookupSRV }()
+
+	mock := ServerMock{}
+	mock.Start(t, fmt.Sprintf("localhost:%d", testClientSrvFallbackSuccess), handlerClientConnectSuccess)
+	defer mock.Stop()
+
+	config := Config{
+		Jid:            "test@localhost",
+		Credential:     Password("test"),
+		Insecure:       true,
+		ConnectTimeout: 2,
+	}
+
+	var client *Client
+	var err error
+	router := NewRouter()
+	if client, err = NewClient(&config, router, clientDefaultErrorHandler); err != nil {
+		t.Fatalf("cannot create XMPP client: %s", err)
+	}
+
+	if got, want := client.config.Address, fmt.Sprintf("localhost:%d", testClientSrvFallbackDead); got != want {
+		t.Fatalf("expected first SRV target to be selected initially, got %q want %q", got, want)
+	}
+
+	if err = client.Connect(); err != nil {
+		t.Fatalf("XMPP connection failed through SRV fallback: %s", err)
+	}
+
+	if client.transport == nil {
+		t.Fatal("expected transport to be established")
+	}
+	if client.config.Address != fmt.Sprintf("localhost:%d", testClientSrvFallbackSuccess) {
+		t.Fatalf("expected fallback to second SRV target, got %q", client.config.Address)
+	}
+
+	if err := client.Disconnect(); err != nil {
+		t.Fatalf("disconnect after SRV fallback failed: %v", err)
+	}
 }
 
 // Check that the client is properly tracking features, as session negotiation progresses.
@@ -673,6 +727,9 @@ func closeConn(t *testing.T, sc *ServerConn) {
 	for {
 		cls, err := stanza.NextPacket(sc.decoder)
 		if err != nil {
+			if err == io.EOF || errors.Is(err, net.ErrClosed) || strings.Contains(err.Error(), "closed network connection") || strings.Contains(err.Error(), "connection reset by peer") {
+				return
+			}
 			t.Errorf("cannot read from socket: %s", err)
 			return
 		}
