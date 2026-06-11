@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-//=============================================================================
+// =============================================================================
 // TCP Server Mock
 const (
 	defaultTimeout       = 2 * time.Second
@@ -221,6 +221,18 @@ func sendStreamFeatures(t *testing.T, sc *ServerConn) {
   <mechanisms xmlns="urn:ietf:params:xml:ns:xmpp-sasl">
     <mechanism>PLAIN</mechanism>
   </mechanisms>
+</stream:features>`
+	if _, err := fmt.Fprintln(sc.connection, features); err != nil {
+		t.Errorf("cannot send stream feature: %s", err)
+	}
+}
+
+func sendStreamFeaturesWithCaps(t *testing.T, sc *ServerConn) {
+	features := `<stream:features>
+  <mechanisms xmlns="urn:ietf:params:xml:ns:xmpp-sasl">
+    <mechanism>PLAIN</mechanism>
+  </mechanisms>
+  <c xmlns="http://jabber.org/protocol/caps" hash="sha-256" node="urn:xmpp:caps" ver="server-cap-v1"/>
 </stream:features>`
 	if _, err := fmt.Fprintln(sc.connection, features); err != nil {
 		t.Errorf("cannot send stream feature: %s", err)

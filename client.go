@@ -138,6 +138,9 @@ type Client struct {
 	transport Transport
 	// Router is used to dispatch packets
 	router *Router
+	// Track discovered server capabilities for the current connection.
+	serverCapabilitiesMu sync.RWMutex
+	serverCapabilities   map[string]*stanza.DiscoInfo
 	// Track and broadcast connection state
 	EventManager
 	// Handle errors from client execution
@@ -209,6 +212,7 @@ func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, 
 	}
 	c.config.TransportConfiguration.ConnectTimeout = c.config.ConnectTimeout
 	c.transport = NewClientTransport(c.config.TransportConfiguration)
+	c.serverCapabilities = make(map[string]*stanza.DiscoInfo)
 
 	if config.StreamLogger != nil {
 		c.transport.LogTraffic(config.StreamLogger)
@@ -328,6 +332,94 @@ func (c *Client) Disconnect() error {
 
 func (c *Client) SetHandler(handler EventHandler) {
 	c.Handler = handler
+}
+
+// ServerFeatures returns the latest stream features advertised by the server before SASL/authentication.
+func (c *Client) ServerFeatures() stanza.StreamFeatures {
+	if c.Session == nil {
+		return stanza.StreamFeatures{}
+	}
+	return c.Session.ServerFeatures
+}
+
+// ServerCapabilities fetches and caches the server disco#info response.
+// If the server advertises entity capabilities, those are used as the cache key.
+func (c *Client) ServerCapabilities(ctx context.Context) (*stanza.DiscoInfo, error) {
+	if c.Session == nil {
+		return nil, errors.New("client session is not established")
+	}
+
+	cacheKey := c.serverCapabilitiesCacheKey()
+	c.serverCapabilitiesMu.RLock()
+	if cached, ok := c.serverCapabilities[cacheKey]; ok {
+		c.serverCapabilitiesMu.RUnlock()
+		return cloneDiscoInfo(cached), nil
+	}
+	c.serverCapabilitiesMu.RUnlock()
+
+	iq, err := stanza.NewIQ(stanza.Attrs{Type: stanza.IQTypeGet, To: c.config.Domain})
+	if err != nil {
+		return nil, err
+	}
+	iq.DiscoInfo()
+
+	resultCh, err := c.SendIQ(ctx, iq)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case res, ok := <-resultCh:
+		if !ok {
+			return nil, errors.New("server capabilities request was cancelled")
+		}
+		payload, ok := res.Payload.(*stanza.DiscoInfo)
+		if !ok || payload == nil {
+			return nil, errors.New("server capabilities response did not contain disco info")
+		}
+
+		c.serverCapabilitiesMu.Lock()
+		c.serverCapabilities[cacheKey] = cloneDiscoInfo(payload)
+		c.serverCapabilitiesMu.Unlock()
+
+		return cloneDiscoInfo(payload), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	return nil, errors.New("server capabilities request failed")
+}
+
+func (c *Client) serverCapabilitiesCacheKey() string {
+	if c.Session != nil {
+		caps := c.Session.ServerFeatures.Caps
+		if caps.Node != "" || caps.Ver != "" {
+			return caps.Node + "#" + caps.Ver
+		}
+
+		caps = c.Session.Features.Caps
+		if caps.Node != "" || caps.Ver != "" {
+			return caps.Node + "#" + caps.Ver
+		}
+	}
+
+	return c.config.Domain
+}
+
+func cloneDiscoInfo(info *stanza.DiscoInfo) *stanza.DiscoInfo {
+	if info == nil {
+		return nil
+	}
+
+	clone := *info
+	clone.Identity = append([]stanza.Identity(nil), info.Identity...)
+	clone.Features = append([]stanza.Feature(nil), info.Features...)
+	if info.ResultSet != nil {
+		resultSet := *info.ResultSet
+		clone.ResultSet = &resultSet
+	}
+
+	return &clone
 }
 
 // Send marshals XMPP stanza and sends it to the server.
