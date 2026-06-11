@@ -65,6 +65,20 @@ func (iq *IQ) MakeError(xerror Err) *IQ {
 	return iq
 }
 
+func (iq *IQ) MakeResult() *IQ {
+	from := iq.From
+	to := iq.To
+
+	iq.Type = IQTypeResult
+	iq.From = to
+	iq.To = from
+	iq.Error = nil
+	iq.Payload = nil
+	iq.Any = nil
+
+	return iq
+}
+
 func (*IQ) Name() string {
 	return "iq"
 }
