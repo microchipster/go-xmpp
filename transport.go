@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 var ErrTransportProtocolNotSupported = errors.New("transport protocol not supported")
@@ -42,6 +43,7 @@ type Transport interface {
 	IsSecure() bool
 
 	Ping() error
+	SetDeadline(deadline time.Time) error
 	Read(p []byte) (n int, err error)
 	Write(p []byte) (n int, err error)
 	Close() error

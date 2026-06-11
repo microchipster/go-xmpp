@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"gosrc.io/xmpp/stanza"
 	"io"
+	"time"
 )
 
 type ComponentOptions struct {
@@ -74,6 +75,13 @@ func (c *Component) Resume() error {
 		c.updateState(StatePermanentError)
 		return NewConnError(err, true)
 	}
+	if c.ComponentOptions.ConnectTimeout > 0 {
+		deadline := time.Now().Add(time.Duration(c.ComponentOptions.ConnectTimeout) * time.Second)
+		if err := c.transport.SetDeadline(deadline); err != nil {
+			c.updateState(StatePermanentError)
+			return NewConnError(err, true)
+		}
+	}
 
 	if streamId, err = c.transport.Connect(); err != nil {
 		c.updateState(StatePermanentError)
@@ -99,6 +107,9 @@ func (c *Component) Resume() error {
 		c.streamError("conflict", "no auth loop")
 		return NewConnError(errors.New("handshake failed "+v.Error.Local), true)
 	case stanza.Handshake:
+		if c.ComponentOptions.ConnectTimeout > 0 {
+			_ = c.transport.SetDeadline(time.Time{})
+		}
 		// Start the receiver go routine
 		c.updateState(StateSessionEstablished)
 		go c.recv()
@@ -178,9 +189,8 @@ func (c *Component) sendWithWriter(writer io.Writer, packet []byte) error {
 // The provided context should have a timeout to prevent the client from waiting
 // forever for an IQ result. For example:
 //
-//   ctx, _ := context.WithTimeout(context.Background(), 30 * time.Second)
-//   result := <- client.SendIQ(ctx, iq)
-//
+//	ctx, _ := context.WithTimeout(context.Background(), 30 * time.Second)
+//	result := <- client.SendIQ(ctx, iq)
 func (c *Component) SendIQ(ctx context.Context, iq *stanza.IQ) (chan stanza.IQ, error) {
 	if iq.Attrs.Type != stanza.IQTypeSet && iq.Attrs.Type != stanza.IQTypeGet {
 		return nil, ErrCanOnlySendGetOrSetIq

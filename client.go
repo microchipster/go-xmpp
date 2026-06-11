@@ -332,6 +332,13 @@ func (c *Client) connect() error {
 		c.config.TransportConfiguration.Address = address
 		c.config.Address = address
 		c.transport = newClientTransportForAddress(c.config.TransportConfiguration, address, c.config.StreamLogger)
+		if c.config.ConnectTimeout > 0 {
+			deadline := time.Now().Add(time.Duration(c.config.ConnectTimeout) * time.Second)
+			if err := c.transport.SetDeadline(deadline); err != nil {
+				lastErr = fmt.Errorf("set deadline on %s: %w", address, err)
+				continue
+			}
+		}
 		previousTransport = c.transport
 		if originalSession != nil {
 			sessionCopy := *originalSession
@@ -355,6 +362,9 @@ func (c *Client) connect() error {
 			go failedTransport.Close()
 			c.Session = nil
 			continue
+		}
+		if c.config.ConnectTimeout > 0 {
+			_ = c.transport.SetDeadline(time.Time{})
 		}
 		c.Session.StreamId = streamId
 		c.updateState(StateSessionEstablished)
