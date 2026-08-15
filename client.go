@@ -332,11 +332,12 @@ func (c *Client) Connect() error {
 	if err != nil {
 		return err
 	}
+	c.startRuntime()
 	err = c.postSessionSetup()
 	if err != nil {
+		_ = c.Disconnect()
 		return err
 	}
-	c.startRuntime()
 	return nil
 }
 
@@ -411,11 +412,12 @@ func (c *Client) Resume() error {
 	if err != nil {
 		return err
 	}
+	c.startRuntime()
 	err = c.postSessionSetup()
 	if err != nil {
+		_ = c.Disconnect()
 		return err
 	}
-	c.startRuntime()
 	return nil
 }
 
@@ -643,6 +645,7 @@ func (c *Client) recv(keepaliveQuit chan<- struct{}) {
 			err = c.Send(answer)
 			if err != nil {
 				c.ErrorHandler(err)
+				_ = c.Disconnect()
 				return
 			}
 			continue
