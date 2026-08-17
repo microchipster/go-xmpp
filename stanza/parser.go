@@ -9,10 +9,11 @@ import (
 
 // Reads and checks the opening XMPP stream element.
 // TODO It returns a stream structure containing:
-// - Host: You can check the host against the host you were expecting to connect to
-// - Id: the Stream ID is a temporary shared secret used for some hash calculation. It is also used by ProcessOne
-//       reattach features (allowing to resume an existing stream at the point the connection was interrupted, without
-//       getting through the authentication process.
+//   - Host: You can check the host against the host you were expecting to connect to
+//   - Id: the Stream ID is a temporary shared secret used for some hash calculation. It is also used by ProcessOne
+//     reattach features (allowing to resume an existing stream at the point the connection was interrupted, without
+//     getting through the authentication process.
+//
 // TODO We should handle stream error from XEP-0114 ( <conflict/> or <host-unknown/> )
 func InitStream(p *xml.Decoder) (sessionID string, err error) {
 	for {
@@ -87,11 +88,8 @@ func NextPacket(p *xml.Decoder) (Packet, error) {
 func NextXmppToken(p *xml.Decoder) (xml.Token, error) {
 	for {
 		t, err := p.Token()
-		if err == io.EOF {
-			return xml.StartElement{}, errors.New("connection closed")
-		}
 		if err != nil {
-			return xml.StartElement{}, fmt.Errorf("NextStart %s", err)
+			return xml.StartElement{}, nextTokenError(err)
 		}
 		switch t := t.(type) {
 		case xml.StartElement:
@@ -108,17 +106,30 @@ func NextXmppToken(p *xml.Decoder) (xml.Token, error) {
 func NextStart(p *xml.Decoder) (xml.StartElement, error) {
 	for {
 		t, err := p.Token()
-		if err == io.EOF {
-			return xml.StartElement{}, errors.New("connection closed")
-		}
 		if err != nil {
-			return xml.StartElement{}, fmt.Errorf("NextStart %s", err)
+			return xml.StartElement{}, nextTokenError(err)
 		}
 		switch t := t.(type) {
 		case xml.StartElement:
 			return t, nil
 		}
 	}
+}
+
+func nextTokenError(err error) error {
+	if err == io.EOF || isUnexpectedEOF(err) {
+		return errors.New("connection closed")
+	}
+	return fmt.Errorf("NextStart %s", err)
+}
+
+func isUnexpectedEOF(err error) bool {
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	var syntaxErr *xml.SyntaxError
+	return errors.As(err, &syntaxErr) && syntaxErr.Msg == "unexpected EOF"
 }
 
 /*
