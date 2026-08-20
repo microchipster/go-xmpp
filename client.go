@@ -418,6 +418,33 @@ func (c *Client) Resume() error {
 		_ = c.Disconnect()
 		return err
 	}
+	if c.Session != nil && c.Session.Resumed && c.Session.SMState.UnAckQueue != nil {
+		_ = c.resendUnacknowledgedStanzas()
+	}
+	return nil
+}
+
+func (c *Client) resendUnacknowledgedStanzas() error {
+	if c.Session == nil || c.Session.SMState.UnAckQueue == nil {
+		return nil
+	}
+	c.Session.SMState.UnAckQueue.RWMutex.RLock()
+	pending := make([]string, len(c.Session.SMState.UnAckQueue.Uslice))
+	for i, elt := range c.Session.SMState.UnAckQueue.Uslice {
+		pending[i] = elt.Stz
+	}
+	c.Session.SMState.UnAckQueue.RWMutex.RUnlock()
+
+	for _, raw := range pending {
+		if err := c.sendWithWriter(c.transport, []byte(raw)); err != nil {
+			return err
+		}
+	}
+	if len(pending) > 0 {
+		if err := c.Send(stanza.SMRequest{}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
