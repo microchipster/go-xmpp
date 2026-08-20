@@ -46,8 +46,9 @@ func (r *Router) route(s Sender, p stanza.Packet) {
 	if isA {
 		switch tt := s.(type) {
 		case *Client:
-			lastAcked := a.H
-			SendMissingStz(int(lastAcked), s, tt.Session.SMState.UnAckQueue)
+			if tt.Session != nil && tt.Session.SMState.UnAckQueue != nil {
+				_ = SendMissingStz(int(a.H), s, tt.Session.SMState.UnAckQueue)
+			}
 		case *Component:
 		// TODO
 		default:
@@ -92,21 +93,18 @@ func SendMissingStz(lastSent int, s Sender, uaq *stanza.UnAckQueue) error {
 	if uaq == nil {
 		return nil
 	}
-	uaq.RWMutex.Lock()
+	uaq.Acknowledge(lastSent)
+
+	uaq.RWMutex.RLock()
 	if len(uaq.Uslice) == 0 {
-		uaq.RWMutex.Unlock()
+		uaq.RWMutex.RUnlock()
 		return nil
 	}
-	ackIdx := 0
-	for ackIdx < len(uaq.Uslice) && uaq.Uslice[ackIdx].Id <= lastSent {
-		ackIdx++
-	}
-	uaq.Uslice = uaq.Uslice[ackIdx:]
 	pending := make([]string, len(uaq.Uslice))
 	for i, elt := range uaq.Uslice {
 		pending[i] = elt.Stz
 	}
-	uaq.RWMutex.Unlock()
+	uaq.RWMutex.RUnlock()
 
 	for _, raw := range pending {
 		switch tt := s.(type) {

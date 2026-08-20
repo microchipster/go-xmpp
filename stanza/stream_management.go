@@ -31,7 +31,8 @@ func (SMEnabled) Name() string {
 }
 
 type UnAckQueue struct {
-	Uslice []*UnAckedStz
+	Uslice    []*UnAckedStz
+	TotalSent int
 	sync.RWMutex
 }
 type UnAckedStz struct {
@@ -41,8 +42,9 @@ type UnAckedStz struct {
 
 func NewUnAckQueue() *UnAckQueue {
 	return &UnAckQueue{
-		Uslice:  make([]*UnAckedStz, 0, 10), // Capacity is 0 to comply with "Push" implementation (so that no reachable element is nil)
-		RWMutex: sync.RWMutex{},
+		Uslice:    make([]*UnAckedStz, 0, 10), // Capacity is 0 to comply with "Push" implementation (so that no reachable element is nil)
+		TotalSent: 0,
+		RWMutex:   sync.RWMutex{},
 	}
 }
 
@@ -108,10 +110,17 @@ func (uaq *UnAckQueue) Push(s Queueable) error {
 	if uaq == nil {
 		return nil
 	}
+	uaq.RWMutex.Lock()
+	defer uaq.RWMutex.Unlock()
+
 	pushIdx := 1
 	if len(uaq.Uslice) != 0 {
 		pushIdx = uaq.Uslice[len(uaq.Uslice)-1].Id + 1
 	}
+	if pushIdx <= uaq.TotalSent {
+		pushIdx = uaq.TotalSent + 1
+	}
+	uaq.TotalSent = pushIdx
 
 	sStz, ok := s.(*UnAckedStz)
 	if !ok {
@@ -126,6 +135,23 @@ func (uaq *UnAckQueue) Push(s Queueable) error {
 	uaq.Uslice = append(uaq.Uslice, &e)
 
 	return nil
+}
+
+// Acknowledge removes all stanzas with sequence ID <= lastSent from the queue.
+func (uaq *UnAckQueue) Acknowledge(lastSent int) int {
+	if uaq == nil {
+		return 0
+	}
+	uaq.RWMutex.Lock()
+	defer uaq.RWMutex.Unlock()
+	ackIdx := 0
+	for ackIdx < len(uaq.Uslice) && uaq.Uslice[ackIdx].Id <= lastSent {
+		ackIdx++
+	}
+	if ackIdx > 0 {
+		uaq.Uslice = uaq.Uslice[ackIdx:]
+	}
+	return ackIdx
 }
 
 func (uaq *UnAckQueue) Empty() bool {

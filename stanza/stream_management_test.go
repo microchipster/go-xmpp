@@ -217,8 +217,31 @@ func initUnAckQueue() stanza.UnAckQueue {
 </iq>`},
 	}
 
-	return stanza.UnAckQueue{Uslice: q}
+	return stanza.UnAckQueue{Uslice: q, TotalSent: len(q)}
 
+}
+
+func TestUnAckQueueAcknowledgeAndPushMonotonic(t *testing.T) {
+	var uaq stanza.UnAckQueue
+	_ = uaq.Push(&stanza.UnAckedStz{Stz: "<message id='1'/>"})
+	_ = uaq.Push(&stanza.UnAckedStz{Stz: "<message id='2'/>"})
+	_ = uaq.Push(&stanza.UnAckedStz{Stz: "<message id='3'/>"})
+
+	if len(uaq.Uslice) != 3 || uaq.Uslice[2].Id != 3 {
+		t.Fatalf("expected 3 items with last id 3, got len %d and id %d", len(uaq.Uslice), uaq.Uslice[2].Id)
+	}
+
+	// Ack all 3 items (queue becomes empty)
+	acked := uaq.Acknowledge(3)
+	if acked != 3 || len(uaq.Uslice) != 0 {
+		t.Fatalf("expected 3 acked items and empty queue, got acked=%d len=%d", acked, len(uaq.Uslice))
+	}
+
+	// Push a 4th item after queue was emptied
+	_ = uaq.Push(&stanza.UnAckedStz{Stz: "<message id='4'/>"})
+	if len(uaq.Uslice) != 1 || uaq.Uslice[0].Id != 4 {
+		t.Fatalf("expected 1 item with monotonic id 4, got len %d and id %d", len(uaq.Uslice), uaq.Uslice[0].Id)
+	}
 }
 
 func init() {

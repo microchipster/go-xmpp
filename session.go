@@ -197,13 +197,7 @@ func (s *Session) resume(o *Config) bool {
 				return false
 			}
 			if p.H != nil && s.SMState.UnAckQueue != nil {
-				ackIdx := 0
-				s.SMState.UnAckQueue.RWMutex.Lock()
-				for ackIdx < len(s.SMState.UnAckQueue.Uslice) && s.SMState.UnAckQueue.Uslice[ackIdx].Id <= int(*p.H) {
-					ackIdx++
-				}
-				s.SMState.UnAckQueue.Uslice = s.SMState.UnAckQueue.Uslice[ackIdx:]
-				s.SMState.UnAckQueue.RWMutex.Unlock()
+				s.SMState.UnAckQueue.Acknowledge(int(*p.H))
 			}
 			s.Resumed = true
 			return true
