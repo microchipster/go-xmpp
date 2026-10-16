@@ -2,6 +2,7 @@ package stanza
 
 import (
 	"encoding/xml"
+	"strings"
 	"testing"
 )
 
@@ -65,5 +66,52 @@ func TestMAMResultMessageExtension(t *testing.T) {
 	}
 	if res.Forwarded.Message == nil || StringValue(res.Forwarded.Message.Body) != "Hello" {
 		t.Fatalf("unexpected forwarded message: %#v", res.Forwarded.Message)
+	}
+}
+
+func TestMarshalMAMQueryAndFinNamespaces(t *testing.T) {
+	queryIQ, err := NewIQ(Attrs{Type: IQTypeSet, Id: "1"})
+	if err != nil {
+		t.Fatalf("failed to create query IQ: %v", err)
+	}
+	queryIQ.Payload = &MAMQuery{
+		XMLName: xml.Name{Space: NSMAM2, Local: "query"},
+		QueryID: "q1",
+		Form: Form{
+			Type: "submit",
+			Fields: []*Field{
+				{Var: "FORM_TYPE", Type: FieldTypeHidden, ValuesList: []string{NSMAM2}},
+			},
+		},
+	}
+
+	out, err := xml.Marshal(queryIQ)
+	if err != nil {
+		t.Fatalf("failed to marshal MAM query: %v", err)
+	}
+	serialized := string(out)
+	if !strings.Contains(serialized, `query xmlns="`+NSMAM2+`"`) {
+		t.Fatalf("MAM query lost its namespace during marshaling: %s", serialized)
+	}
+	if !strings.Contains(serialized, `queryid="q1"`) {
+		t.Fatalf("MAM query lost its query id during marshaling: %s", serialized)
+	}
+
+	finIQ, err := NewIQ(Attrs{Type: IQTypeResult, Id: "2"})
+	if err != nil {
+		t.Fatalf("failed to create fin IQ: %v", err)
+	}
+	finIQ.Payload = &MAMFin{XMLName: xml.Name{Space: NSMAM2, Local: "fin"}, Complete: true}
+
+	out, err = xml.Marshal(finIQ)
+	if err != nil {
+		t.Fatalf("failed to marshal MAM fin: %v", err)
+	}
+	serialized = string(out)
+	if !strings.Contains(serialized, `fin xmlns="`+NSMAM2+`"`) {
+		t.Fatalf("MAM fin lost its namespace during marshaling: %s", serialized)
+	}
+	if !strings.Contains(serialized, `complete="true"`) {
+		t.Fatalf("MAM fin lost its complete flag during marshaling: %s", serialized)
 	}
 }
