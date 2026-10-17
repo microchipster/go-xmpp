@@ -288,15 +288,6 @@ func TestSendIqFail(t *testing.T) {
 // Right now, the server response is not checked and an err is passed in a channel if the test is supposed to err.
 // In this test, we use IQs
 func TestSendRaw(t *testing.T) {
-	done := make(chan struct{})
-	// Handler for the mock server
-	h := func(t *testing.T, sc *ServerConn) {
-		// Completes the connection by exchanging handshakes
-		handlerForComponentHandshakeDefaultID(t, sc)
-		respondToIQ(t, sc)
-		done <- struct{}{}
-	}
-
 	type testCase struct {
 		req       string
 		shouldErr bool
@@ -316,16 +307,29 @@ func TestSendRaw(t *testing.T) {
 		port:      testSendRawPort + 200,
 	}
 
-	// A handler for the component.
-	// In the failing test, the server returns a stream error, which triggers this handler, component side.
-	errChan := make(chan error)
-	errHandler := func(err error) {
-		errChan <- err
-	}
-
 	// Tests for all the IQs
 	for name, tcase := range testRequests {
 		t.Run(name, func(st *testing.T) {
+			// The done and errChan channels and the handlers are created per
+			// subtest. Previously they were shared between subtests, and the
+			// read loop of the closed connection from a previous subtest
+			// could report "use of closed network connection" into the next
+			// subtest's errChan, failing it randomly. Buffered channels also
+			// make sure a late event never blocks a handler goroutine.
+			done := make(chan struct{}, 1)
+			errChan := make(chan error, 2)
+			// Handler for the mock server
+			h := func(t *testing.T, sc *ServerConn) {
+				// Completes the connection by exchanging handshakes
+				handlerForComponentHandshakeDefaultID(t, sc)
+				respondToIQ(t, sc)
+				done <- struct{}{}
+			}
+			// A handler for the component.
+			// In the failing test, the server returns a stream error, which triggers this handler, component side.
+			errHandler := func(err error) {
+				errChan <- err
+			}
 			//Connecting to a mock server, initialized with given port and handler function
 			c, m := mockComponentConnection(t, tcase.port, h)
 			c.ErrorHandler = errHandler
