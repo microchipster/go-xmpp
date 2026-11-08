@@ -126,6 +126,12 @@ func (s *Session) startTlsIfSupported(o *Config) {
 		return
 	}
 
+	if s.transport.IsSecure() {
+		// Already encrypted (direct TLS / XEP-0368); nothing to negotiate.
+		s.TlsEnabled = true
+		return
+	}
+
 	if !s.transport.DoesStartTLS() {
 		if !o.Insecure {
 			s.err = errors.New("transport does not support starttls")

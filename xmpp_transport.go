@@ -42,6 +42,14 @@ func (t *XMPPTransport) Connect() (string, error) {
 		return "", NewConnError(err, true)
 	}
 
+	// XEP-0368 direct TLS: wrap the connection in TLS before opening the stream.
+	if t.Config.DirectTLS {
+		if err := t.upgradeTLS(); err != nil {
+			_ = t.conn.Close()
+			return "", NewConnError(err, true)
+		}
+	}
+
 	t.closeChan = make(chan stanza.StreamClosePacket, 1)
 	t.readWriter = newStreamLogger(t.conn, t.logFile)
 	t.decoder = xml.NewDecoder(bufio.NewReaderSize(t.readWriter, maxPacketSize))
@@ -70,7 +78,9 @@ func (t *XMPPTransport) StartStream() (string, error) {
 }
 
 func (t *XMPPTransport) DoesStartTLS() bool {
-	return true
+	// A direct TLS connection (XEP-0368) is already encrypted and does not
+	// negotiate STARTTLS afterwards.
+	return !t.Config.DirectTLS
 }
 
 func (t *XMPPTransport) GetDomain() string {
@@ -89,6 +99,13 @@ func (t *XMPPTransport) IsSecure() bool {
 }
 
 func (t *XMPPTransport) StartTLS() error {
+	t.isSecure = false
+	return t.upgradeTLS()
+}
+
+// tlsClientConfig returns the TLS config to use for this transport, cloning
+// the user-provided config (if any) and defaulting the server name.
+func (t *XMPPTransport) tlsClientConfig() *tls.Config {
 	if t.Config.TLSConfig == nil {
 		t.TLSConfig = &tls.Config{}
 	} else {
@@ -98,13 +115,18 @@ func (t *XMPPTransport) StartTLS() error {
 	if t.TLSConfig.ServerName == "" {
 		t.TLSConfig.ServerName = t.Config.Domain
 	}
-	tlsConn := tls.Client(t.conn, t.TLSConfig)
-	// We convert existing connection to TLS
+	return t.TLSConfig
+}
+
+// upgradeTLS converts the existing connection to TLS, either directly
+// (XEP-0368 direct TLS) or after a <starttls/> negotiation, and rewires the
+// reader, writer and decoder to the TLS connection.
+func (t *XMPPTransport) upgradeTLS() error {
+	tlsConn := tls.Client(t.conn, t.tlsClientConfig())
 	if err := tlsConn.Handshake(); err != nil {
 		return err
 	}
 
-	t.isSecure = false
 	t.conn = tlsConn
 	t.readWriter = newStreamLogger(tlsConn, t.logFile)
 	t.decoder = xml.NewDecoder(bufio.NewReaderSize(t.readWriter, maxPacketSize))

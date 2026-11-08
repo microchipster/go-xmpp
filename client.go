@@ -144,6 +144,9 @@ type Client struct {
 	router *Router
 	// Connection addresses are ordered by preference and used for SRV fallback.
 	srvAddresses []string
+	// srvDirectTLS marks SRV candidates that require direct TLS (XEP-0368)
+	// instead of STARTTLS.
+	srvDirectTLS map[string]bool
 	// Track discovered server capabilities for the current connection.
 	serverCapabilitiesMu sync.RWMutex
 	serverCapabilities   map[string]*stanza.DiscoInfo
@@ -168,6 +171,7 @@ Setting up the client / Checking the parameters
 // Default the port to 5222.
 func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, err error) {
 	var candidateAddresses []string
+	directTLSAddresses := make(map[string]bool)
 
 	if config.KeepaliveInterval == 0 {
 		config.KeepaliveInterval = time.Second * 30
@@ -187,10 +191,16 @@ func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, 
 	if config.Address == "" {
 		config.Address = config.parsedJid.Domain
 
-		// Fetch SRV DNS-Entries
-		if srvAddresses := resolveSRVAddresses(config.parsedJid.Domain); len(srvAddresses) > 0 {
-			config.Address = srvAddresses[0]
-			candidateAddresses = srvAddresses
+		// Fetch SRV DNS-Entries. XEP-0368 direct TLS endpoints take
+		// precedence over STARTTLS endpoints.
+		if candidates := resolveSRVCandidates(config.parsedJid.Domain); len(candidates) > 0 {
+			config.Address = candidates[0].address
+			for _, candidate := range candidates {
+				candidateAddresses = append(candidateAddresses, candidate.address)
+				if candidate.directTLS {
+					directTLSAddresses[candidate.address] = true
+				}
+			}
 		}
 	} else {
 		candidateAddresses = []string{config.Address}
@@ -220,14 +230,44 @@ func NewClient(config *Config, r *Router, errorHandler func(error)) (c *Client, 
 	}
 	c.config.TransportConfiguration.ConnectTimeout = c.config.ConnectTimeout
 	c.srvAddresses = candidateAddresses
+	c.srvDirectTLS = directTLSAddresses
+	c.config.TransportConfiguration.DirectTLS = directTLSAddresses[candidateAddresses[0]]
 	c.transport = newClientTransportForAddress(c.config.TransportConfiguration, candidateAddresses[0], c.config.StreamLogger)
 	c.serverCapabilities = make(map[string]*stanza.DiscoInfo)
 
 	return
 }
 
-func resolveSRVAddresses(domain string) []string {
-	_, srvEntries, err := lookupSRV("xmpp-client", "tcp", domain)
+// srvCandidate is one SRV-discovered connection endpoint. directTLS marks
+// XEP-0368 endpoints that expect TLS from the first byte instead of STARTTLS.
+type srvCandidate struct {
+	address   string
+	directTLS bool
+}
+
+// resolveSRVCandidates resolves the XMPP connection endpoints for a domain.
+// Direct TLS endpoints (XEP-0368, _xmpps-client._tcp) are preferred over
+// STARTTLS endpoints (_xmpp-client._tcp).
+func resolveSRVCandidates(domain string) []srvCandidate {
+	candidates := lookupSRVService(domain, "xmpps-client", true)
+	candidates = append(candidates, lookupSRVService(domain, "xmpp-client", false)...)
+
+	seen := make(map[string]struct{}, len(candidates))
+	deduped := make([]srvCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, ok := seen[candidate.address]; ok {
+			continue
+		}
+		seen[candidate.address] = struct{}{}
+		deduped = append(deduped, candidate)
+	}
+	return deduped
+}
+
+// lookupSRVService resolves a single XMPP SRV service and normalizes the
+// records into connection candidates.
+func lookupSRVService(domain string, service string, directTLS bool) []srvCandidate {
+	_, srvEntries, err := lookupSRV(service, "tcp", domain)
 	if err != nil || len(srvEntries) == 0 {
 		return nil
 	}
@@ -242,7 +282,7 @@ func resolveSRVAddresses(domain string) []string {
 		return srvEntries[i].Target < srvEntries[j].Target
 	})
 
-	addresses := make([]string, 0, len(srvEntries))
+	candidates := make([]srvCandidate, 0, len(srvEntries))
 	seen := make(map[string]struct{}, len(srvEntries))
 	for _, srv := range srvEntries {
 		address := ensurePort(srv.Target, int(srv.Port))
@@ -250,10 +290,10 @@ func resolveSRVAddresses(domain string) []string {
 			continue
 		}
 		seen[address] = struct{}{}
-		addresses = append(addresses, address)
+		candidates = append(candidates, srvCandidate{address: address, directTLS: directTLS})
 	}
 
-	return addresses
+	return candidates
 }
 
 func newClientTransportForAddress(config TransportConfiguration, address string, logFile *os.File) Transport {
@@ -359,6 +399,7 @@ func (c *Client) connect() error {
 
 		c.config.TransportConfiguration.Address = address
 		c.config.Address = address
+		c.config.TransportConfiguration.DirectTLS = c.srvDirectTLS[address]
 		c.transport = newClientTransportForAddress(c.config.TransportConfiguration, address, c.config.StreamLogger)
 		if c.config.ConnectTimeout > 0 {
 			deadline := time.Now().Add(time.Duration(c.config.ConnectTimeout) * time.Second)

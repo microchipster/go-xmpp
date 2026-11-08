@@ -202,7 +202,14 @@ func TestClient_SessionEstablishmentTimeout(t *testing.T) {
 func TestClient_SRVFallback(t *testing.T) {
 	originalLookupSRV := lookupSRV
 	lookupSRV = func(service, proto, name string) (string, []*net.SRV, error) {
-		if service != "xmpp-client" || proto != "tcp" || name != testClientDomain {
+		if proto != "tcp" || name != testClientDomain {
+			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+		}
+		if service == "xmpps-client" {
+			// No direct TLS endpoints advertised.
+			return "", nil, nil
+		}
+		if service != "xmpp-client" {
 			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
 		}
 		return "", []*net.SRV{
@@ -926,4 +933,119 @@ func mockClientConnection(t *testing.T, serverHandler func(*testing.T, *ServerCo
 // This really should not be used as is.
 // It's just meant to be a placeholder when error handling is not needed at this level
 func clientDefaultErrorHandler(err error) {
+}
+
+func TestResolveSRVCandidatesPrefersDirectTLS(t *testing.T) {
+	originalLookupSRV := lookupSRV
+	lookupSRV = func(service, proto, name string) (string, []*net.SRV, error) {
+		if proto != "tcp" || name != testClientDomain {
+			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+		}
+		switch service {
+		case "xmpps-client":
+			return "", []*net.SRV{
+				{Target: "tls-a.localhost", Port: 443, Priority: 20, Weight: 5},
+				{Target: "tls-b.localhost", Port: 443, Priority: 10, Weight: 5},
+			}, nil
+		case "xmpp-client":
+			return "", []*net.SRV{
+				// Duplicate of a direct TLS endpoint: must not be added twice and
+				// must keep its direct TLS classification.
+				{Target: "tls-b.localhost", Port: 443, Priority: 10, Weight: 5},
+				{Target: "plain.localhost", Port: 5222, Priority: 10, Weight: 5},
+			}, nil
+		default:
+			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+			return "", nil, nil
+		}
+	}
+	defer func() { lookupSRV = originalLookupSRV }()
+
+	candidates := resolveSRVCandidates(testClientDomain)
+	wantOrder := []string{"tls-b.localhost:443", "tls-a.localhost:443", "plain.localhost:5222"}
+	if len(candidates) != len(wantOrder) {
+		t.Fatalf("expected %d candidates, got %d: %+v", len(wantOrder), len(candidates), candidates)
+	}
+	for i, want := range wantOrder {
+		if candidates[i].address != want {
+			t.Fatalf("candidate %d: got %q want %q", i, candidates[i].address, want)
+		}
+	}
+	if !candidates[0].directTLS || !candidates[1].directTLS {
+		t.Fatalf("expected direct TLS endpoints to be marked directTLS: %+v", candidates)
+	}
+	if candidates[2].directTLS {
+		t.Fatalf("expected STARTTLS endpoint to not be marked directTLS: %+v", candidates[2])
+	}
+}
+
+func TestResolveSRVCandidatesWithoutDirectTLS(t *testing.T) {
+	originalLookupSRV := lookupSRV
+	lookupSRV = func(service, proto, name string) (string, []*net.SRV, error) {
+		if proto != "tcp" || name != testClientDomain {
+			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+		}
+		if service == "xmpps-client" {
+			return "", nil, nil
+		}
+		if service != "xmpp-client" {
+			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+		}
+		return "", []*net.SRV{
+			{Target: "plain.localhost", Port: 5222, Priority: 10, Weight: 5},
+		}, nil
+	}
+	defer func() { lookupSRV = originalLookupSRV }()
+
+	candidates := resolveSRVCandidates(testClientDomain)
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %+v", candidates)
+	}
+	if candidates[0].directTLS {
+		t.Fatalf("expected STARTTLS candidate when no direct TLS endpoints exist: %+v", candidates[0])
+	}
+}
+
+func TestClient_PrefersDirectTLSSRVCandidate(t *testing.T) {
+	originalLookupSRV := lookupSRV
+	lookupSRV = func(service, proto, name string) (string, []*net.SRV, error) {
+		if proto != "tcp" || name != testClientDomain {
+			t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+		}
+		if service == "xmpps-client" {
+			return "", []*net.SRV{
+				{Target: "direct.localhost", Port: 443, Priority: 10, Weight: 5},
+			}, nil
+		}
+		if service == "xmpp-client" {
+			return "", []*net.SRV{
+				{Target: "plain.localhost", Port: 5222, Priority: 10, Weight: 5},
+			}, nil
+		}
+		t.Fatalf("unexpected SRV lookup: %s %s %s", service, proto, name)
+		return "", nil, nil
+	}
+	defer func() { lookupSRV = originalLookupSRV }()
+
+	config := Config{
+		Jid:            "test@localhost",
+		Credential:     Password("test"),
+		Insecure:       true,
+		ConnectTimeout: 2,
+	}
+
+	client, err := NewClient(&config, NewRouter(), clientDefaultErrorHandler)
+	if err != nil {
+		t.Fatalf("cannot create XMPP client: %s", err)
+	}
+
+	if got, want := client.config.Address, "direct.localhost:443"; got != want {
+		t.Fatalf("expected direct TLS endpoint to be preferred, got %q want %q", got, want)
+	}
+	if !client.config.TransportConfiguration.DirectTLS {
+		t.Fatalf("expected TransportConfiguration.DirectTLS for the preferred candidate")
+	}
+	if !client.srvDirectTLS["direct.localhost:443"] || client.srvDirectTLS["plain.localhost:5222"] {
+		t.Fatalf("unexpected srvDirectTLS map: %+v", client.srvDirectTLS)
+	}
 }

@@ -25,6 +25,9 @@ type TransportConfiguration struct {
 	Domain         string
 	Lang           string
 	ConnectTimeout int // Client timeout in seconds. Default to 15
+	// DirectTLS connects with TLS from the first byte (XEP-0368) instead of
+	// negotiating STARTTLS after the stream is opened.
+	DirectTLS bool
 	// tls.Config must not be modified after having been passed to NewClient. Any
 	// changes made after connecting are ignored.
 	TLSConfig     *tls.Config
